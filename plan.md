@@ -4,7 +4,7 @@
 
 A single-player, phase-based, 3-on-3 basketball browser game focused on tactical choices, court positioning, and calculated risk. AllDunks is the title, not a restriction on gameplay: passing, jump shots, layups, drives, screens, rebounds, and defense all matter. Dunks can be one finishing option, not the central mechanic.
 
-Status: milestone 1 core rules specified on branch codex/core-rules. See [core-rules.md](core-rules.md) for the first-playable specification and sample possessions. Milestone 2 rules-engine implementation is next. No implementation stack has been selected.
+Status: milestones 1 and 2 are implemented on codex/core-rules. See [core-rules.md](core-rules.md) for rules and [README.md](README.md) for running the engine checks. The prototype uses strict TypeScript compiled to JavaScript ES modules, shared by Node and the future browser UI. Milestone 3, the playable court interface, is next.
 
 ## Confirmed requirements
 
@@ -117,17 +117,17 @@ Introduce separate speed, ball handling, or additional defensive skills only whe
 
 ## Technical approach to evaluate
 
-A local browser prototype using TypeScript is a reasonable candidate. Choose the rendering/UI library after confirming the board representation. Keep game rules independent of rendering so possessions can be simulated and verified without a browser.
+The rules prototype uses strict TypeScript, compiles to JavaScript ES modules, and runs checks with the built-in Node test runner. TypeScript and Node type definitions are development-only dependencies. Choose the browser rendering/UI library during milestone 3. Keep game rules independent of rendering so possessions can be simulated and verified without a browser.
 
 Use an explicit game-state machine, legal-action validation, and seeded randomness for reproducible debugging. Store probabilities and action costs in tuning data rather than scattering constants through UI code. No server or account system is needed for the first playable version.
 
 ## Implementation milestones
 
-### 1. Lock the core rules
+### 1. Lock the core rules — specified
 
 Define court layout, phase timing, stamina allowances, action costs, possession changes, defensive reaction budgets, and shot/rebound outcomes. Write a few sample possessions to expose ambiguities.
 
-### 2. Build the rules prototype
+### 2. Build the rules prototype — implemented
 
 Implement state transitions, legal actions, stamina spending, shot outcomes, and rebound phases with seeded randomness. Verify offensive rebounds reset to the reduced allowance and defensive rebounds change possession correctly.
 
@@ -174,3 +174,11 @@ These defaults resolve the initial design questions for implementation. Tune pro
 - Excessive randomness can make good decisions feel irrelevant; deterministic outcomes can remove tension.
 - Abstract human defense needs meaningful choices and clear feedback to remain engaging.
 - Rebound phases must create urgency without making second-chance possessions ineffective.
+
+## Milestone 2 validation
+
+The initial 16 scenario tests passed, including repeat rebound allowances, 21-point wins, guaranteed open dunks, contested rim shots, height modifiers, rare stamina profiles, invalid actions, defensive reactions, and seeded reproducibility. A separate simulation completed 120 games: 60 with default lineups and 60 with rare-profile stress lineups, mirrored across teams. This establishes termination and rule consistency, not roster balance or final AI quality. The baseline AI produces low-quality shots and needs the planned tactical improvements and playtesting. No browser interface has been implemented yet.
+
+## TypeScript conversion
+
+Source, roster, scenario tests, and simulation runner use TypeScript with explicit state, action, zone, player, strategy, and event types. The build emits JavaScript, declarations, and source maps under dist/. Run npm ci, npm run typecheck, npm test, and npm run simulate -- 30. All 16 tests passed after conversion; 120 simulation results matched the original JavaScript version. Four seeded full games also matched action by action, including state and event logs.
