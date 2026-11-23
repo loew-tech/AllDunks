@@ -4,20 +4,21 @@
 
 A single-player, phase-based, 3-on-3 basketball browser game focused on tactical choices, court positioning, and calculated risk. AllDunks is the title, not a restriction on gameplay: passing, jump shots, layups, drives, screens, rebounds, and defense all matter. Dunks can be one finishing option, not the central mechanic.
 
-Status: initial planning. No implementation stack has been selected.
+Status: milestone 1 core rules specified on branch codex/core-rules. See [core-rules.md](core-rules.md) for the first-playable specification and sample possessions. Milestone 2 rules-engine implementation is next. No implementation stack has been selected.
 
 ## Confirmed requirements
 
 - One human player controls a three-player team against an AI team.
 - Play is organized into phases rather than continuous real-time action.
-- Each athlete has a stamina stat that determines how many moves they can make in a phase.
+- Each athlete has a stamina stat that determines how many moves they can make in a phase. Most are 4–6; rare 3 or 7 profiles require compensating strengths and weaknesses, including height.
+- The score limit is 21; reaching or exceeding it wins.
 - The human team's defense resolves through probability-based calculations.
 - AI defense must make competent, understandable basketball decisions.
 - An offensive rebound begins a new offensive phase with floor(normal phase stamina × 2/3) moves per athlete, representing the shorter remaining shot clock. Round down exactly; there is no minimum-one override.
 
 ## Accepted first playable scope
 
-Use a top-down half court and games to 11, with two-point baskets inside the arc and three-point baskets outside it. Start with court zones or a small grid to make movement, spacing, and legal actions clear. Use six fixed athletes and a small set of meaningful stats before adding roster building or progression. This first-playable scope is accepted; the exact court representation remains to be chosen.
+Use a top-down half court and games to 21, with two-point baskets inside the arc and three-point baskets outside it. Start with court zones or a small grid to make movement, spacing, and legal actions clear. Use six fixed athletes and a small set of meaningful stats before adding roster building or progression. This first-playable scope is accepted; the exact court representation remains to be chosen.
 
 The player should win through creating good opportunities, not repeatedly exploiting one dominant action.
 
@@ -33,7 +34,7 @@ The player should win through creating good opportunities, not repeatedly exploi
 8. On a defensive rebound, made basket, or turnover, change possession and start the appropriate next phase.
 9. On AI offense, resolve its attack against the human team's defensive ratings, positioning or abstract coverage, and selected defensive strategy.
 
-Before implementation, specify the possession/check-ball rules, dead-ball handling, and what happens when a phase expires without a shot. A shot-clock violation is the initial candidate for phase expiry.
+The core rules specify checked-ball resets on possession changes and a phase violation when the ball holder cannot progress play. See core-rules.md for resolution order.
 
 ## Stamina and action economy
 
@@ -44,12 +45,12 @@ Stamina rules:
 - Normal phase allowance: derived directly from the athlete's stamina stat.
 - Offensive rebound allowance: floor(normal phase allowance × 2/3), with no minimum-one override. For example, five becomes three, six becomes four, and one becomes zero.
 - Example: a normal allowance of six becomes four after an offensive rebound.
-- Recalculate from the normal allowance on every offensive rebound; do not compound the reduction. Rounding down is confirmed. Using the normal allowance as the baseline on repeated rebounds remains the proposed rule.
+- Recalculate from the normal allowance on every offensive rebound; do not compound the reduction. Rounding down is confirmed. The prototype uses the normal allowance as the baseline on every rebound.
 - A defensive rebound gives the new offense its normal allowance.
 - Apply the same rebound rules to both teams.
 - Keep long-term fatigue out of the first prototype. Add it only if phase stamina alone proves insufficient.
 
-Prototype action costs should be simple: movement, passing, driving, and screening consume explicit amounts. Tune costs together with court size and defensive reaction limits. Decide whether taking a shot consumes a move and whether a player with no moves can receive a pass or attempt a catch-and-shoot shot.
+Prototype movement, passing, driving, and shooting each cost one move. A zero-allowance athlete can receive a pass but cannot shoot; a completed pass to that athlete ends the phase as a violation. Screens remain later work. See core-rules.md for complete timing and costs.
 
 ## Offensive actions
 
@@ -95,14 +96,15 @@ Recommended starting timing: one bounded defensive response after each human off
 
 Keep the first set small:
 
-- Stamina: phase move allowance.
+- Stamina: phase move allowance; most athletes have 4–6, with rare 3 or 7 exceptions balanced against height and skill strengths.
+- Height: physical reach in centimeters; affects at-rim contests and rebounding. Slow centers typically gain height/interior strengths; fast guards typically sacrifice height/rebounding.
 - Shooting: perimeter and/or midrange accuracy.
 - Finishing: ability to score near the rim.
 - Passing: pass success under pressure.
 - Defense: contesting and containing opponents.
 - Rebounding: ability to secure missed shots.
 
-Introduce speed, ball handling, size, or separate defensive skills only when they create distinct decisions that the initial stats cannot support.
+Introduce separate speed, ball handling, or additional defensive skills only when they create distinct decisions that the initial stats cannot support.
 
 ## Interface and feedback
 
@@ -159,14 +161,11 @@ Tune shot probabilities, action costs, rebound frequency, and defensive response
 - Outcomes and remaining moves are understandable from the interface.
 - Seeded simulations can reproduce reported rule or AI bugs.
 
-## Open design decisions
+## Milestone 1 decisions
 
-- Grid versus named court zones, and the number of locations.
-- Exact definition of a phase and defensive reaction timing.
-- Stamina scale, action costs, and confirmation that repeated offensive rebounds always use the normal allowance as their baseline.
-- Whether the human selects defensive strategy per possession or less often.
-- How much AI offense is shown and whether it shares the court simulation.
-- Whether games to 11 require a two-point winning margin, plus check-ball rules, fouls, steals, and out-of-bounds handling.
+The prototype defaults are recorded in core-rules.md: 11 named court zones, one-move actions, one bounded defensive response per successful setup action, games to 21 without a winning margin, automatic defense with strategy selected per opponent possession, and shared rules for AI offense. Possession changes reset to a check; offensive rebounds preserve positions and reset to floor(normal stamina × 2/3).
+
+These defaults resolve the initial design questions for implementation. Tune probabilities, AI scoring, zone connections, and stamina through scenario checks and playtesting. Confirmed scoring, rebound rounding, and dunk behavior remain requirements.
 
 ## Main design risks
 
@@ -175,5 +174,3 @@ Tune shot probabilities, action costs, rebound frequency, and defensive response
 - Excessive randomness can make good decisions feel irrelevant; deterministic outcomes can remove tension.
 - Abstract human defense needs meaningful choices and clear feedback to remain engaging.
 - Rebound phases must create urgency without making second-chance possessions ineffective.
-
-
