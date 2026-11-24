@@ -5,7 +5,9 @@
   "type": "module",
   "description": "Deterministic phase-based 3-on-3 basketball rules prototype",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node dist/scripts/build-web.js",
+    "dev": "npm run build && node dist/scripts/serve.js",
+    "start": "npm run dev",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test dist/test/*.test.js",
     "simulate": "npm run build && node dist/scripts/simulate.js"

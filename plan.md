@@ -4,7 +4,7 @@
 
 A single-player, phase-based, 3-on-3 basketball browser game focused on tactical choices, court positioning, and calculated risk. AllDunks is the title, not a restriction on gameplay: passing, jump shots, layups, drives, screens, rebounds, and defense all matter. Dunks can be one finishing option, not the central mechanic.
 
-Status: milestones 1 and 2 are implemented on codex/core-rules. See [core-rules.md](core-rules.md) for rules and [README.md](README.md) for running the engine checks. The prototype uses strict TypeScript compiled to JavaScript ES modules, shared by Node and the future browser UI. Milestone 3, the playable court interface, is next.
+Status: milestones 1–3 are implemented on codex/core-rules. See [core-rules.md](core-rules.md) for rules and [README.md](README.md) for running the engine checks. The prototype uses strict TypeScript compiled to JavaScript ES modules, shared by Node and the future browser UI. The playable browser court is available with npm run dev. Milestone 4, improved defensive intelligence, is next.
 
 ## Confirmed requirements
 
@@ -117,7 +117,7 @@ Introduce separate speed, ball handling, or additional defensive skills only whe
 
 ## Technical approach to evaluate
 
-The rules prototype uses strict TypeScript, compiles to JavaScript ES modules, and runs checks with the built-in Node test runner. TypeScript and Node type definitions are development-only dependencies. Choose the browser rendering/UI library during milestone 3. Keep game rules independent of rendering so possessions can be simulated and verified without a browser.
+The rules prototype uses strict TypeScript, compiles to JavaScript ES modules, and runs checks with the built-in Node test runner. TypeScript and Node type definitions are development-only dependencies. The browser interface uses native DOM and SVG with TypeScript, sharing the engine without a framework or runtime dependencies. Keep game rules independent of rendering so possessions can be simulated and verified without a browser.
 
 Use an explicit game-state machine, legal-action validation, and seeded randomness for reproducible debugging. Store probabilities and action costs in tuning data rather than scattering constants through UI code. No server or account system is needed for the first playable version.
 
@@ -131,7 +131,7 @@ Define court layout, phase timing, stamina allowances, action costs, possession 
 
 Implement state transitions, legal actions, stamina spending, shot outcomes, and rebound phases with seeded randomness. Verify offensive rebounds reset to the reduced allowance and defensive rebounds change possession correctly.
 
-### 3. Build the playable court
+### 3. Build the playable court — implemented
 
 Add player selection, movement, passing, shooting, score display, move counters, and event feedback. Complete a full game with placeholder graphics.
 
@@ -177,8 +177,14 @@ These defaults resolve the initial design questions for implementation. Tune pro
 
 ## Milestone 2 validation
 
-The initial 16 scenario tests passed, including repeat rebound allowances, 21-point wins, guaranteed open dunks, contested rim shots, height modifiers, rare stamina profiles, invalid actions, defensive reactions, and seeded reproducibility. A separate simulation completed 120 games: 60 with default lineups and 60 with rare-profile stress lineups, mirrored across teams. This establishes termination and rule consistency, not roster balance or final AI quality. The baseline AI produces low-quality shots and needs the planned tactical improvements and playtesting. No browser interface has been implemented yet.
+The initial 16 scenario tests passed, including repeat rebound allowances, 21-point wins, guaranteed open dunks, contested rim shots, height modifiers, rare stamina profiles, invalid actions, defensive reactions, and seeded reproducibility. A separate simulation completed 120 games: 60 with default lineups and 60 with rare-profile stress lineups, mirrored across teams. This establishes termination and rule consistency, not roster balance or final AI quality. The baseline AI produces low-quality shots and needs the planned tactical improvements and playtesting. The browser interface is now implemented; see milestone 3 below.
 
 ## TypeScript conversion
 
 Source, roster, scenario tests, and simulation runner use TypeScript with explicit state, action, zone, player, strategy, and event types. The build emits JavaScript, declarations, and source maps under dist/. Run npm ci, npm run typecheck, npm test, and npm run simulate -- 30. All 16 tests passed after conversion; 120 simulation results matched the original JavaScript version. Four seeded full games also matched action by action, including state and event logs.
+
+## Milestone 3 validation
+
+The browser court supports player selection, court-zone movement, passing, shooting, chance previews, stamina counters, 21-point scoring, reduced-stamina rebound phases, strategy selection, opponent step/play/pause controls, game-over results, seeded restart, and readable event feedback. The local server runs with npm run dev at http://127.0.0.1:5173. State is in memory and resets on reload.
+
+Strict type checking and all 19 tests passed, including three UI-session flow tests. Browser checks covered off-ball movement, a completed pass, scoring, defensive strategy, an opponent offensive rebound with reduced allowances, a complete game ending at 21, restart, and automatic opponent playback returning control. Responsive layout inspection found that small screens placed instructions before controls; controls now precede the supplementary panels. Browser console checks showed no errors during these flows. Detailed AI tuning, balance, sound, and richer animation remain later milestones.
