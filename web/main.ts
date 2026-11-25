@@ -1,5 +1,5 @@
-import { driveRisk, legalActions, passProbability, shotPreview } from '../src/engine.js';
-import type { Action, GameEvent, Strategy, HexId } from '../src/types.js';
+import { assignmentOptions, controlsMarkup, timelineMarkup, strategyNames, escape } from './planner-controls.js';
+import type { PlannedAction, GameEvent, Strategy, HexId } from '../src/types.js';
 import { CELLS, cellLabel, distance } from '../src/court.js';
 import { hexToPixel, polygonPoints, THREE_RADIUS } from './court-view.js';
 import { GameSession } from './session.js';
@@ -12,22 +12,18 @@ let running = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let error = '';
 let seed = 42;
+let speed = 1;
 
 const cells = Object.fromEntries(Object.values(CELLS).map(c => [c.id, {
   ...hexToPixel(c), name: cellLabel(c.id), short: `${c.q},${c.r}`,
 }])) as Record<HexId, { x: number; y: number; name: string; short: string }>;
-const strategyNames: Record<Strategy, string> = {
-  balanced: 'Balanced', 'protect-paint': 'Protect the paint', 'pressure-perimeter': 'Pressure the perimeter',
-};
-const escape = (value: unknown): string => String(value).replace(/[&<>"']/g,
-  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const playerName = (id: string) => escape(session.state.players.find(p => p.id === id)?.name ?? id);
-const isHumanTurn = () => session.state.possession === 'human' && session.state.status === 'playing';
+const isHumanTurn = () => session.canEdit;
 
-function courtMarkup(actions: Action[]): string {
-  const s = session.state;
-  const moves = actions.filter(a => (a.type === 'move' || a.type === 'drive') && a.athlete === session.selectedId);
+function courtMarkup(actions: PlannedAction[]): string {
+  const s = session.preview;
+  const moves = actions.filter((a): a is Extract<PlannedAction, {type:'move'}> => a.type === 'move' && a.athlete === session.selectedId);
   const available = new Set(moves.map(a => a.to));
   const targets = Object.values(CELLS).map(c => {
     const legal = isHumanTurn() && available.has(c.id);
@@ -44,6 +40,11 @@ function courtMarkup(actions: Action[]): string {
       ${legal && defenders ? `<circle class="coverage-marker" cx="${center.x + 24}" cy="${center.y - 20}" r="5"/>` : ''}
     </g>`;
   }).join('');
+  const routes = session.canEdit ? s.players.filter(p => p.team === 'human').map(p => {
+    const snapshots = session.validation.snapshots;
+    const points = snapshots.map(v => cells[v.positions[p.id]]).map(c => `${c.x},${c.y}`).join(' ');
+    return `<polyline class="planned-route" points="${points}"/>`;
+  }).join('') : '';
   const tokens = s.players.map((p, i) => {
     const z = cells[s.positions[p.id]];
     const shared = s.players.some(other => other.id !== p.id && s.positions[other.id] === s.positions[p.id]);
@@ -77,12 +78,12 @@ function courtMarkup(actions: Action[]): string {
     <path d="M${450 - THREE_RADIUS} 45V120A${THREE_RADIUS} ${THREE_RADIUS} 0 0 0 ${450 + THREE_RADIUS} 120V45" class="scoring-arc"/>
     <text x="450" y="30" text-anchor="middle" class="court-key">RIM (0,0) · 2 POINTS INSIDE ARC / 3 OUTSIDE</text>
     <path style="pointer-events:none" d="M409 65H491" stroke="#fff5d6" stroke-width="7"/><circle cx="450" cy="86" r="16" fill="none" stroke="#f56632" stroke-width="5"/>
-    ${tokens}
+    ${routes}${tokens}
   </svg>`;
 }
 
 function rosterMarkup(): string {
-  const s = session.state, selected = s.players.find(p => p.id === session.selectedId)!;
+  const s = session.preview, selected = s.players.find(p => p.id === session.selectedId)!;
   return `<section class="panel"><h2>Your three <small>Select a player</small></h2><div class="roster">${s.players.filter(p => p.team === 'human').map((p, i) => {
     const allowance = s.phase === 'rebound' ? Math.floor(p.stamina * 2 / 3) : p.stamina;
     return `<button class="player-card ${p.id === session.selectedId ? 'selected' : ''}" data-player="${p.id}" aria-pressed="${p.id === session.selectedId}">
@@ -95,46 +96,6 @@ function rosterMarkup(): string {
     </div></section>`;
 }
 
-function controlsMarkup(actions: Action[]): string {
-  const s = session.state;
-  if (s.status === 'over') return `<section class="panel control-panel"><div class="eyebrow">Final · first to 21</div>
-    <h2 style="font-size:1.6rem;margin-top:10px">${s.winner === 'human' ? 'Your court.' : 'Run it back.'}</h2>
-    <p class="final-score">${s.scores.human} : ${s.scores.ai}</p><p class="howto">${s.winner === 'human' ? 'You took the win.' : 'The visitors took this one.'} Start a new game to try a different approach.</p>
-    <button class="primary" data-command="new-game">Play again</button></section>`;
-  if (s.possession === 'ai') return `<section class="panel control-panel"><h2>On defense <small>AI possession</small></h2>
-    <p class="notice">${s.phase === 'rebound' ? 'Opponent offensive rebound. Reduced moves; your strategy carries over.' : 'Your players defend automatically. Pick a coverage, then advance the opponent.'}</p>
-    <div class="strategy-buttons" role="group" aria-label="Defensive strategy">${(Object.keys(strategyNames) as Strategy[]).map(key =>
-      `<button data-strategy="${key}" class="${s.strategy === key ? 'active' : ''}" aria-pressed="${s.strategy === key}" ${!s.strategyOpen || running ? 'disabled' : ''}>${strategyNames[key]}</button>`).join('')}</div>
-    <div class="action-buttons"><button class="primary" data-command="play-ai">${running ? 'Pause opponent' : 'Play opponent possession'}</button>
-    <button data-command="step-ai" ${running ? 'disabled' : ''}>Next AI action <small>one step</small></button></div>
-    <p class="howto" style="font-size:.8rem;margin-top:12px">${s.strategyOpen ? 'Strategy locks after the first action.' : 'Coverage is locked for this possession.'} You take over when possession changes.</p></section>`;
-
-  const selected = s.players.find(p => p.id === session.selectedId)!;
-  const holder = s.ballHolder === selected.id;
-  const preview = shotPreview(s, selected.id);
-  const shot = actions.findIndex(a => a.type === 'shoot' && a.athlete === selected.id);
-  const moveButtons = actions.map((a, i) => ({ a, i })).filter(({ a }) =>
-    (a.type === 'move' || a.type === 'drive') && a.athlete === selected.id).map(({ a, i }) => {
-    if (a.type !== 'move' && a.type !== 'drive') return '';
-    const risk = a.type === 'drive' ? driveRisk(s, selected.id, a.to) : 0;
-    return `<button data-action="${i}">${cells[a.to].name}<small>${risk ? `${percent(risk)} turnover · ` : ''}1 move</small></button>`;
-  }).join('');
-  const passButtons = holder ? actions.map((a, i) => ({ a, i })).filter(({ a }) => a.type === 'pass').map(({ a, i }) => {
-    if (a.type !== 'pass') return '';
-    return `<button data-action="${i}" title="${escape(a.warning ?? 'Pass costs one move')}">To ${playerName(a.to)}<small>${a.warning ? 'NO MOVES · violation' : percent(passProbability(s, a.to))} · 1 move</small></button>`;
-  }).join('') : '';
-  const label = preview.dunk ? 'Open dunk' : preview.kind === 'three' ? 'Three-pointer' : preview.kind === 'rim' ? 'Shot at the rim' : 'Midrange shot';
-  return `<section class="panel control-panel"><h2>${escape(selected.name)} <small>${holder ? 'Ball handler' : 'Off the ball'}</small></h2>
-    ${s.phase === 'rebound' ? '<p class="notice warm">Second chance. Moves reset to ⅔ of normal stamina, rounded down.</p>' : ''}
-    ${holder ? `<div class="shot-card"><div><h3>${label}</h3><p>${preview.points} points · ${preview.contributors.length ? `${preview.contributors.length} defender${preview.contributors.length > 1 ? 's' : ''} contesting` : 'Undefended'}</p></div><div class="shot-chance">${percent(preview.probability)}</div></div>
-    <div class="action-buttons"><button class="primary" data-action="${shot}" ${shot < 0 ? 'disabled' : ''}>${preview.dunk ? 'Dunk' : 'Take the shot'}<small>1 move</small></button></div>`
-    : `<p class="notice">Move ${escape(selected.name)} into space, or select ${playerName(s.ballHolder)} to pass or shoot.</p><button class="subtle" data-player="${s.ballHolder}">Select ball handler</button>`}
-    <div class="actions-label">${holder ? 'Drive to a hex' : 'Move to a hex'}</div>
-    <div class="action-buttons">${moveButtons || '<p class="howto">No movement available.</p>'}</div>
-    ${holder ? `<div class="actions-label">Pass the ball</div><div class="action-buttons">${passButtons || '<p class="howto">No moves left to pass.</p>'}</div>` : ''}
-    <div class="actions-label">Possession</div><div class="action-buttons"><button class="subtle" data-command="end-possession">End possession<small>turnover</small></button></div></section>`;
-}
-
 function eventText(e: GameEvent): string | null {
   switch (e.type) {
     case 'shot': return `${playerName(e.athlete)} ${e.made ? 'scores' : 'misses'}${e.dunk ? ' an open dunk' : ` a ${e.points}-point shot`} · ${percent(e.probability)} chance.`;
@@ -144,7 +105,11 @@ function eventText(e: GameEvent): string | null {
     case 'action': return e.actionType === 'move' ? `${playerName(e.athlete)} moves to ${cells[e.to as HexId].name}.` : null;
     case 'defensive-reaction': return 'athlete' in e ? `${playerName(e.athlete)} adjusts to ${cells[e.to].name} · 1 defensive move.` : null;
     case 'phase-start': return `${e.possession === 'human' ? 'Your' : 'Opponent'} ${e.phaseType === 'rebound' ? 'rebound phase · reduced moves' : 'possession · full moves'}.`;
-    case 'phase-violation': return `${playerName(e.athlete)} is out of moves. Possession turns over.`;
+    case 'phase-violation': return `${escape(e.reason ?? 'Phase expired')}. Possession turns over.`;
+    case 'skipped-action': return `${playerName(e.athlete)} skips step ${e.step + 1}: ${escape(e.reason)}.`;
+    case 'timeline-step': return `Executing step ${e.step + 1}.`;
+    case 'play-committed': return `${e.team === 'human' ? 'Your' : 'Opponent'} play committed · ${e.slots} steps.`;
+    case 'play-ended': return `Play ended${e.cancelledSteps ? ` · ${e.cancelledSteps} remaining steps cancelled` : ''}.`;
     case 'strategy': return `Coverage set to ${strategyNames[e.strategy].toLowerCase()}.`;
     case 'match-over': return `${e.winner === 'human' ? 'You win' : 'Opponent wins'}, ${e.scores.human}–${e.scores.ai}.`;
     default: return null;
@@ -152,12 +117,13 @@ function eventText(e: GameEvent): string | null {
 }
 
 function render(): void {
-  const s = session.state, actions = legalActions(s);
+  const previousTimelineScroll = root.querySelector('.timeline-scroll')?.scrollLeft ?? 0;
+  const s = session.state, actions = assignmentOptions(session);
   const selected = s.players.find(p => p.id === session.selectedId)!;
-  const label = s.status === 'over' ? 'Game over' : s.phase === 'rebound' ? 'Rebound phase · ⅔ moves' : `Phase ${s.phaseNumber} · ${s.possession === 'human' ? 'Your offense' : 'Your defense'}`;
+  const label = s.status === 'over' ? 'Game over' : s.phase === 'rebound' ? 'Rebound phase · ⅔ moves' : `Phase ${s.phaseNumber} · ${s.mode === 'executing' ? 'Executing' : 'Planning'}`;
   const caption = s.status === 'over' ? 'Game finished. Play again to start a fresh matchup.' : isHumanTurn()
-    ? `${selected.name} selected. Click a highlighted hex to ${selected.id === s.ballHolder ? 'drive' : 'move'}, or use the action panel. Coordinates are (q, r); every action costs one move.`
-    : running ? 'Opponent possession is playing. Pause at any time to inspect the court.' : 'Choose your defensive coverage and advance the opponent in the action panel.';
+    ? `${selected.name}: assigning step ${session.selectedStep + 1}. Click a hex to schedule movement; the court is a forecast, not live execution.`
+    : s.mode === 'executing' ? 'Committed play. Use playback controls to run, pause, or step; assignments are locked.' : 'Choose defensive coverage, then run the opponent’s committed play.';
   const log = s.events.map(e => ({ phase: e.phase, text: eventText(e) })).filter(e => e.text !== null).slice(-24).reverse();
   root.innerHTML = `<div class="shell">
     <header class="topbar"><div class="brand" aria-label="AllDunks"><i aria-hidden="true"></i>ALL<span>DUNKS</span></div>
@@ -168,33 +134,35 @@ function render(): void {
       <div class="score-team away"><div><div class="team-name">VISITORS</div><div class="team-label">AI team · orange</div></div><div class="score-number">${s.scores.ai.toString().padStart(2, '0')}</div></div>
     </section>
     ${error ? `<p role="alert" class="notice error">${escape(error)}</p>` : ''}
-    <div class="game-layout"><div><section class="court-panel"><div class="court-heading"><div><h1>${isHumanTurn() ? 'Make your next move.' : s.status === 'over' ? 'Final whistle.' : 'Get a stop.'}</h1><p>Hex court · 1 move per cell · orange dots mark covered destinations.</p></div><div class="legend"><span><b></b>Your team</span><span><b></b>Opponent</span></div></div>
+    <div class="game-layout"><div><section class="court-panel"><div class="court-heading"><div><h1>${isHumanTurn() ? 'Call your play.' : s.status === 'over' ? 'Final whistle.' : 'Get a stop.'}</h1><p>Hex court · 1 move per cell · orange dots mark covered destinations.</p></div><div class="legend"><span><b></b>Your team</span><span><b></b>Opponent</span></div></div>
       ${courtMarkup(actions)}<div class="court-caption">${escape(caption)}</div></section>
-      <div class="below-court"><section class="panel"><h2>Play-by-play <small>Latest first</small></h2><ol class="log">${log.map(e => `<li><span class="log-phase">P${e.phase}</span>${e.text}</li>`).join('')}</ol></section>
-      <section class="panel howto"><h2>The game plan <small>How to play</small></h2><p><strong>Select a mint player</strong> to see their moves. Click a highlighted hex or choose a move in the action panel.</p>
-      <p><strong>Create a shot.</strong> Pass, drive, or move off the ball. The defense can make one response after each setup action.</p>
-      <details><summary>Stamina, rebounds &amp; dunks</summary><ul><li>Each player has their own move budget for the phase; shooting costs one too.</li><li>After an offensive rebound, everyone resets to ⅔ of normal stamina, rounded down.</li><li>Undefended directly under the rim? The shot is a guaranteed dunk. With a defender nearby, it is a normal shot at the rim.</li><li>A completed pass to a player with no moves ends the possession.</li><li>All possession changes reset to a check at the top. First to reach 21 wins.</li></ul></details>
+      ${timelineMarkup(session)}<div class="below-court"><section class="panel"><h2>Play-by-play <small>Latest first</small></h2><ol class="log">${log.map(e => `<li><span class="log-phase">P${e.phase}</span>${e.text}</li>`).join('')}</ol></section>
+      <section class="panel howto"><h2>The game plan <small>How to play</small></h2><p><strong>Select a timeline slot</strong> for any mint player. Assign a move, pass, shot, or hold. The court previews the selected step.</p>
+      <p><strong>Create a shot.</strong> Assign actions for all three players, then run the play. Each step resolves movement, passing, one defensive response, then shooting.</p>
+      <details><summary>Stamina, rebounds &amp; dunks</summary><ul><li>Each player has their own move budget for the phase; shooting costs one too.</li><li>After an offensive rebound, everyone resets to ⅔ of normal stamina, rounded down.</li><li>Undefended directly under the rim? The shot is a guaranteed dunk. With a defender nearby, it is a normal shot at the rim.</li><li>Holds cost nothing. A player may hold for every slot. If the timeline ends without a shot, possession turns over.</li><li>All possession changes reset to a check at the top. First to reach 21 wins.</li></ul></details>
       <div class="toolbar-bottom"><label for="seed">Game seed</label><input id="seed" type="number" step="1" value="${seed}" aria-label="Game seed"><button data-command="new-game">Restart with seed</button></div></section></div>
-    </div><aside class="sidebar">${rosterMarkup()}${controlsMarkup(actions)}
+    </div><aside class="sidebar">${rosterMarkup()}${controlsMarkup(session, actions, running, speed)}
       <section class="panel"><h2>Scouting report <small>Opponent</small></h2>${s.players.filter(p => p.team === 'ai').map(p => `<div class="opponent-row"><span>${escape(p.name)} · ${p.height} cm</span><span>${s.remaining[p.id]} moves</span></div>`).join('')}</section>
     </aside></div><div class="screen-reader" aria-live="polite" aria-atomic="true">${log[0]?.text ?? 'Game ready'}</div>
   </div>`;
+  const timelineScroll = root.querySelector('.timeline-scroll');
+  if (timelineScroll) timelineScroll.scrollLeft = previousTimelineScroll;
 }
 
-function stopOpponent(): void {
+function stopPlayback(): void {
   running = false;
   if (timer !== undefined) clearTimeout(timer);
   timer = undefined;
 }
 
-function stepOpponent(): void {
-  if (session.state.possession !== 'ai' || session.state.status !== 'playing') { stopOpponent(); render(); return; }
+function stepPlayback(): void {
+  if (session.state.mode !== 'executing') { stopPlayback(); render(); return; }
   try {
-    session.nextOpponentAction();
-    if (session.state.possession !== 'ai' || session.state.status !== 'playing') stopOpponent();
-  } catch (e) { error = e instanceof Error ? e.message : 'Unable to play action'; stopOpponent(); }
+    session.step();
+    if (session.state.mode !== 'executing') stopPlayback();
+  } catch (e) { error = e instanceof Error ? e.message : 'Unable to execute step'; stopPlayback(); }
   render();
-  if (running) timer = setTimeout(stepOpponent, 650);
+  if (running) timer = setTimeout(stepPlayback, 700 / speed);
 }
 
 function activate(target: Element): void {
@@ -203,32 +171,40 @@ function activate(target: Element): void {
     const player = target.getAttribute('data-player');
     const hex = target.getAttribute('data-hex') as HexId | null;
     const strategy = target.getAttribute('data-strategy') as Strategy | null;
-    const actionIndex = target.getAttribute('data-action');
+    const assignment = target.getAttribute('data-assignment');
+    const slot = target.getAttribute('data-slot');
     const command = target.getAttribute('data-command');
-    if (player) session.selectPlayer(player);
-    else if (hex && isHumanTurn()) {
-      const move = legalActions(session.state).find(a => (a.type === 'move' || a.type === 'drive') && a.athlete === session.selectedId && a.to === hex);
-      if (move) session.play(move);
-    } else if (strategy && !running) session.chooseStrategy(strategy);
-    else if (actionIndex !== null && isHumanTurn()) {
-      const action = legalActions(session.state)[Number(actionIndex)];
-      if (action) session.play(action);
+    if (slot !== null && session.canEdit) session.selectSlot(target.getAttribute('data-slot-player')!, Number(slot));
+    else if (player) session.selectPlayer(player);
+    else if (hex && session.canEdit) session.assign({ type: 'move', athlete: session.selectedId, to: hex });
+    else if (strategy && !running) session.chooseStrategy(strategy);
+    else if (assignment !== null && session.canEdit) {
+      const action = assignmentOptions(session)[Number(assignment)];
+      if (action) session.assign(action);
     } else if (command === 'new-game') {
-      const input = root.querySelector<HTMLInputElement>('#seed');
-      const nextSeed = Number(input?.value ?? seed);
+      const nextSeed = Number(root.querySelector<HTMLInputElement>('#seed')?.value ?? seed);
       if (!Number.isSafeInteger(nextSeed)) throw new Error('Enter a whole number for the game seed.');
-      stopOpponent(); seed = nextSeed; session = new GameSession(seed);
-    } else if (command === 'end-possession') session.play({ type: 'end-possession' });
-    else if (command === 'step-ai' && !running) { stepOpponent(); return; }
-    else if (command === 'play-ai') {
-      if (running) stopOpponent();
-      else { running = true; stepOpponent(); return; }
+      stopPlayback(); seed = nextSeed; session = new GameSession(seed);
+    } else if (command === 'clear-slot') session.clearSlot();
+    else if (command === 'clear-plan') session.clearPlan();
+    else if (command === 'earlier') session.shiftSlot(-1);
+    else if (command === 'later') session.shiftSlot(1);
+    else if (command === 'commit-plan' || command === 'run-plan') {
+      session.commit();
+      if (command === 'run-plan') { running = true; stepPlayback(); return; }
+    } else if (command === 'commit-ai' || command === 'run-ai') {
+      session.startOpponentPlay();
+      if (command === 'run-ai') { running = true; stepPlayback(); return; }
+    } else if (command === 'next-step' && !running) { stepPlayback(); return; }
+    else if (command === 'toggle-play') {
+      if (running) stopPlayback();
+      else { running = true; stepPlayback(); return; }
     }
-  } catch (e) { error = e instanceof Error ? e.message : 'Unable to play action'; }
+  } catch (e) { error = e instanceof Error ? e.message : 'Unable to assign action'; }
   render();
 }
 
-const actionable = '[data-player],[data-hex],[data-action],[data-command],[data-strategy]';
+const actionable = '[data-player],[data-hex],[data-assignment],[data-command],[data-strategy],[data-slot]';
 root.addEventListener('click', event => {
   if (!(event.target instanceof Element)) return;
   const target = event.target.closest(actionable);
@@ -240,5 +216,8 @@ root.addEventListener('keydown', event => {
   const target = event.target.closest<SVGElement>('svg [role="button"]');
   if (target) { event.preventDefault(); activate(target); }
 });
-window.addEventListener('pagehide', stopOpponent);
+root.addEventListener('change', event => {
+  if (event.target instanceof HTMLSelectElement && event.target.id === 'playback-speed') speed = Number(event.target.value);
+});
+window.addEventListener('pagehide', stopPlayback);
 render();

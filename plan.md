@@ -4,7 +4,7 @@
 
 A single-player, phase-based, 3-on-3 basketball browser game about coaching: assign a team's actions during a planning phase, then watch the play unfold against a reacting defense. AllDunks is the title; passing, jump shots, layups, drives, screens, rebounds, and dunks all have a place.
 
-The initial TypeScript engine and playable browser prototype are implemented on `codex/core-rules`. Milestone 4 now replaces the 11 named court zones with a shared 60-cell axial hex court. Actions still resolve immediately; milestone 5, planned plays, is next. Clear planning and execution feedback remains a release requirement. Existing validation describes the old prototype; it does not establish that these new requirements are complete.
+The initial TypeScript engine and playable browser prototype are implemented on `codex/core-rules`. Milestone 4 now replaces the 11 named court zones with a shared 60-cell axial hex court. Milestone 5 now implements whole-play planning, shared timeline execution, and S default holds per player. Milestone 6, feedback refinement, is next. Clear planning and execution feedback remains a release requirement. Existing validation describes the old prototype; it does not establish that these new requirements are complete.
 
 See [TODO.md](TODO.md) for priorities, [README.md](README.md) for running the current prototype, and [core-rules.md](core-rules.md) for its existing rules. This plan takes precedence for future development. Update the detailed rules alongside the hex and timeline implementation so the documents agree.
 
@@ -111,7 +111,7 @@ Test open rim threats, dangerous shooters, help-and-recovery decisions, passes t
 
 Continue strict TypeScript with the rendering-independent rules engine and native DOM/SVG browser interface. Keep court geometry, tuning data, planning validation, deterministic execution, presentation, and persistence separately testable.
 
-Extend the state machine to explicit planning, executing, resolving, and game-over states. Store committed plans and execution progress in serializable state. Resolve seeded simulation events independently of wall-clock playback, so pause, speed, stepping, and later save/load preserve outcomes.
+Extend the state machine to explicit planning, executing, and game-over states with deterministic resolution events. Store committed plans and execution progress in serializable state. Resolve seeded simulation events independently of wall-clock playback, so pause, speed, stepping, and later save/load preserve outcomes.
 
 No account system or remote server is required. JSON persistence should use browser file download/upload rather than promise unrestricted direct filesystem access.
 
@@ -127,13 +127,13 @@ Implement axial coordinates, finite court cells, rim and scoring classifications
 
 Done when legal movement follows hex adjacency; contours, scoring, contest range, and under-rim eligibility are visible and consistent; existing basketball invariants pass on the new court; and ordinary-stamina sample possessions remain practical.
 
-### 5. Planned plays and deterministic execution — MUST, next
+### 5. Planned plays and deterministic execution — MUST, implemented
 
 Specify same-step ordering and failure rules with worked possessions, then implement a shared timeline, per-player queues, editing, whole-plan validation, commit, execution, and defensive reactions. Migrate AI offense to submitted plans. Replace incompatible immediate-action expiry rules. Add planning routes and dependency feedback while building the planner.
 
 Done when coordinated movement/pass/shot plans execute without mid-play assignments; invalid plans leave state and RNG untouched; collisions and broken dependencies have defined outcomes; defense has bounded legal reactions; and shots, turnovers, rebounds, and game-over cancel the correct remaining actions.
 
-### 6. Playback and outcome feedback — MUST release gate
+### 6. Playback and outcome feedback — MUST release gate, next
 
 Finish active-event highlights, concise explanations, result summaries, play/pause, speed, stepping, and responsive/keyboard interaction. Feedback work starts in milestones 4–5; this milestone verifies the complete experience.
 
@@ -210,3 +210,11 @@ Strict type checking and all 19 tests passed, including three UI-session flow te
 The 60-cell axial court is shared by movement, shot classification, contests, pass/drive pressure, rebound distance, AI, and browser targets. Check-ball positions, state/action types, event descriptions, and tests now use hex coordinates. Pixel projection stays in the renderer. New geometry tests cover board bounds, shortest paths for every cell pair, scoring areas, coordinate labels, invalid movement, and reaching the rim with normal stamina. Original scoring, rebound, stamina, height, and dunk scenarios were migrated. This milestone does not implement the phase 5 planner or complete the later feedback release gate.
 
 Verification: strict type checking and all 24 tests passed. The simulation runner completed 120 games across default and rare-player mirrored lineups. Browser testing completed a 14–21 game, verified defended-hex movement, live three-to-two-point preview changes, restart, and keyboard hex activation with no console errors. Phase 5 remains next; AI quality and balance still require later tuning.
+
+## Milestone 5 implementation
+
+Both teams now commit a complete validated timeline before execution. Each player starts with S holds and may replace up to N with active actions; no action is mandatory. Movement is simultaneous with swaps allowed and collisions rejected. Steps resolve movement, pass, one defensive response, then shot; catch-and-shoot in one step is supported. Timeline exhaustion replaces immediate ball-handler expiry. Shots, turnovers, rebounds, and winning baskets cancel future assignments.
+
+The browser supports slot selection, editing, clearing, reordering, projected paths and positions, plan errors, commitment, pause/play, speed, and stepping. Committed plans are copied into serializable state; AI does not replan mid-play. planning-rules.md specifies ordering, costs, broken dependencies, cancellation, and default-hold examples. The simulation runner uses committed plans. This provides the essential planner feedback; phase 6 remains the broader usability and feedback release gate.
+
+Phase 5 verification: strict type checking and all 35 tests passed. The committed-plan simulation completed 120 games across normal and rare-profile mirrored lineups. Browser checks verified a coordinated move/pass/catch-and-shoot, invalid-plan blocking and correction, commitment locking, stepping, speed selection, pause/resume, and a complete 15–21 game with no console errors. These checks establish rule consistency and playability, not final AI balance or completion of phase 6.

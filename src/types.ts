@@ -33,6 +33,19 @@ export interface ShotPreview {
 export interface ReboundWeight { id: string; weight: number; heightFactor: number }
 export interface DefensiveReaction { athlete: string; to: HexId }
 
+export type PlannedAction =
+  | { type: 'hold'; athlete: string }
+  | { type: 'move'; athlete: string; to: HexId }
+  | { type: 'pass'; athlete: string; to: string }
+  | { type: 'shoot'; athlete: string };
+export interface PlayPlan {
+  team: Team;
+  phaseNumber: number;
+  slots: number;
+  rows: Record<string, PlannedAction[]>;
+}
+export interface Playback { plan: PlayPlan; cursor: number }
+
 export interface EventDetails {
   'phase-start': { phaseType: Phase; possession: Team; remaining: Record<string, number> };
   'possession-change': { reason: string; possession: Team };
@@ -44,7 +57,12 @@ export interface EventDetails {
   pass: { athlete: string; receiver: string; probability: number; roll: number; success: boolean };
   drive: { athlete: string; to: HexId; turnoverProbability: number; roll: number | null; success: boolean };
   'match-over': { winner: Team; scores: Record<Team, number> };
-  'phase-violation': { athlete: string };
+  'phase-violation': { athlete: string; reason?: string };
+  'play-committed': { team: Team; slots: number };
+  'timeline-step': { step: number };
+  hold: { athlete: string; step: number; cost: 0 };
+  'skipped-action': { athlete: string; step: number; reason: string; cost: number };
+  'play-ended': { reason: string; cancelledSteps: number };
 }
 export type GameEvent = {
   [K in keyof EventDetails]: EventDetails[K] & { type: K; phase: number }
@@ -63,6 +81,8 @@ export interface GameState {
   strategyOpen: boolean;
   rng: number;
   status: 'playing' | 'over';
+  mode: 'planning' | 'executing' | 'over';
+  playback: Playback | null;
   winner: Team | null;
   events: GameEvent[];
 }

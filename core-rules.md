@@ -1,12 +1,12 @@
-# AllDunks core rules — first playable
+# AllDunks core rules — through phase 5
 
-Rules through milestone 4 (hex court). Planned simultaneous plays remain milestone 5; actions still resolve immediately in this version. Confirmed requirements take precedence; other choices below are prototype defaults to tune through play. This milestone defines behavior; milestone 2 implements the rules engine.
+The browser game uses [planned plays](planning-rules.md): assign every player’s actions before committing, then execute shared timeline steps. That document defines timing, holds, validation, and cancellation and takes precedence over the earlier immediate-action prototype. Basketball formulas below remain shared by both teams.
 
 ## Match and possessions
 
 One human controls three athletes against three AI athletes on a half court. First team to reach or exceed 21 wins, without a winning-margin requirement. Baskets inside the arc score two; outside score three. The human starts the first possession. No free throws, fouls, screens, loose-ball scrambles, or out-of-bounds events in the initial rules engine.
 
-A possession consists of an opening offensive phase and any offensive-rebound phases. A made basket, defensive rebound, intercepted pass, stopped drive resulting in a turnover, phase violation, or voluntary end-possession changes possession. All changes of possession start a checked-ball phase with reset positions and full allowances. This deliberately omits transition play and clearing the ball in the first playable.
+A possession consists of an opening offensive phase and any offensive-rebound phases. A made basket, defensive rebound, intercepted pass, stopped drive resulting in a turnover, phase violation changes possession. All changes of possession start a checked-ball phase with reset positions and full allowances. This deliberately omits transition play and clearing the ball in the first playable.
 
 ## Court
 
@@ -24,15 +24,13 @@ Hex mathematics follows [Red Blob Games' axial/cube grid reference](https://www.
 
 ## Stamina and phase timing
 
-Normal allowance equals the athlete's integer stamina stat. Most athletes have stamina 4–6. Rare exceptions have stamina 3 (typically a slow, tall center) or 7 (typically a fast, short guard). Valid roster stamina is 3–7; other ability ratings are integers from 0 to 100. Height is a separate physical attribute measured in centimeters. Every athlete has an independent remaining allowance. No borrowing, negative balances, or fatigue across possessions.
+Normal allowance equals the player's stamina: usually 4–6, rarely 3 or 7 with height/skill tradeoffs. Each phase gives all offensive players S timeline slots, where S is the highest offensive allowance. Every slot starts as hold; a player may hold throughout. A player with allowance N may schedule at most N one-move active actions.
 
-On every offensive rebound, reset each athlete's allowance to floor(normal stamina × 2/3). Always use normal stamina, including repeated rebounds. Do not preserve unspent moves or compound reductions. No minimum override: stamina one produces zero. Both teams follow these rules.
+Offensive rebounds reset everyone to floor(normal stamina × 2/3), preserve positions, and create a fresh timeline using the reduced maximum. No minimum override and no compounding. Possession changes restore normal allowances and checked-ball positions.
 
-Each successful non-shot offensive action permits at most one defensive movement reaction by one defender, moving one hex step for one allowance. The defense may hold. Reactions never earn more reactions. Validate the whole action before paying costs or consuming random numbers.
+Movement, pass, one bounded defensive response, and shot resolve in that order within a step. Multiple setup actions allow at most one defensive move. Holds generate none. Shots/turnovers/rebounds end the play and cancel remaining steps. A timeline ending without a shot expires as a turnover. An exhausted ball holder does not terminate teammates' remaining assignments prematurely.
 
-Shots resolve immediately against current coverage: there is no extra defensive move after committing a shot. The defense has already had an opportunity to respond to the preceding setup action. Thus a move to the rim may be answered before the player gets a shot. Preview shot quality only after that response is complete.
-
-After action resolution and any reaction, if the ball handler has no affordable action that can progress play, end the phase as a violation. Moving a teammate cannot restore the ball handler's allowance, so it cannot postpone this condition. The human can voluntarily end the possession. There is no additional real-time clock.
+See planning-rules.md for swaps, conflicts, same-step catches, failure costs, and playback determinism.
 
 ## Athlete balance and height
 
@@ -53,15 +51,14 @@ Height must affect outcomes rather than serving only as flavor. Initial tuning r
 
 ## Actions
 
-| Action | Cost paid by | Effect |
+| Assignment | Cost | Result |
 | --- | --- | --- |
-| Move without ball | Moving athlete: 1 | Move to an adjacent hex without a teammate |
-| Dribble / drive | Ball handler: 1 | Move to an adjacent hex without a teammate; pressure may cause a turnover |
-| Pass | Passer: 1 | Transfer ball to either teammate if successful; receiver pays nothing |
-| Shoot | Shooter: 1 | Resolve shot and then basket or rebound |
-| End possession | None | Concede possession |
+| Hold | Zero | Stay in place; no defensive reaction earned |
+| Move | Moving player: one | Adjacent hex; automatically a drive when carrying the ball |
+| Pass | Passer: one | Pass to a teammate after movement |
+| Shoot | Shooter: one | Resolve after the pass and any setup-triggered defensive response |
 
-A zero-allowance athlete can receive a pass, contest, and rebound, but cannot move, pass, or shoot. Warn before passing to an exhausted teammate; such a completed pass immediately causes a phase violation. A shot using the final move is legal and resolves before expiry. Invalid actions leave state and RNG unchanged.
+Every player has one assignment per shared step. Receiving costs nothing; catch-and-shoot in one step is legal. A zero-allowance player may receive, hold, contest, and rebound but cannot perform active actions. Whole-plan validation blocks foreseeable overspending and missing-ball shots. Planning and validation leave the live state and RNG unchanged.
 
 ## Shots and dunks
 
@@ -80,7 +77,7 @@ These are tuning constants, not claims about real basketball accuracy. Display t
 
 ## Passes and drives
 
-For a pass, count defenders sharing or adjacent to the receiver's hex. Pass success = clamp(0.98 - 0.025 × max(0, distance - 1) - 0.10 × (1 - passing) - 0.06 × receiver-pressure-count, 0.55, 0.98). This models pressure at the target rather than geometric passing lanes. A failure is an interception and checked-ball possession change. A successful pass receives the normal defensive response.
+For a pass, count defenders sharing or adjacent to the receiver's hex. Pass success = clamp(0.98 - 0.025 × max(0, distance - 1) - 0.10 × (1 - passing) - 0.06 × receiver-pressure-count, 0.55, 0.98). This models pressure at the target rather than geometric passing lanes. A failure is an interception and checked-ball possession change. Successful movement and passing together permit at most one defensive response per shared step, before shooting.
 
 For a dribble, evaluate defenders sharing or adjacent to the destination before movement. If none, movement is automatic without a turnover draw. Otherwise turnover probability = clamp(0.04 + 0.12 × strongest-defense + 0.04 × (additional-defenders), 0.04, 0.30). A successful drive moves the athlete, then permits the normal reaction. Failure changes possession. Off-ball movement does not roll for turnovers.
 
@@ -94,7 +91,7 @@ Offensive winner: retain positions, assign ball, start reduced-stamina phase for
 
 Before each opponent possession, the human chooses balanced, protect paint, or pressure perimeter. That choice persists through offensive rebounds. Human defenders react automatically; outcomes use their ratings and the same probability formulas. No manual defensive movement is required.
 
-AI offense uses the same hexes, actions, stamina, reactions, and rebound rules as human offense. Present a short event sequence with the option to advance quickly. Use a one-action scoring policy initially: compare available shot value, pass-to-shot potential, and improvement in shot quality from movement, accounting for turnover risk and remaining allowance. An athlete with one move left should favor a viable shot over a move that guarantees expiry.
+AI offense submits a complete validated plan before execution using the same hexes, stamina, holds, and rebound rules as the human. Its initial planner uses the existing one-action scoring policy against optimistic projections. No assignments are regenerated mid-play. Improving tactical quality remains later work.
 
 Defensive policy evaluates holding and every legal one-defender movement. Minimize the largest current offensive shot threat (shot points × success probability), then the next largest threat, then total threat. For paint protection, multiply at-rim threat by 1.20; for perimeter pressure, multiply three-point threat by 1.20. Balanced uses 1.00 throughout. On equal threat scores, prefer keeping initial matchup coverage, then spending fewer moves, then stable athlete/hex ID. Use identical policy on AI defense with balanced strategy initially.
 
@@ -102,7 +99,7 @@ This makes an unguarded rim worth addressing, penalizes abandoning a shooter, an
 
 ## State and event contract
 
-State includes score, possession team, phase type (normal/rebound), phase number, positions, ball holder, six ratings records, six remaining allowances, selected strategy, RNG state, and match status. Resolution states are action → defensive reaction when applicable → shot/rebound or expiry → next action/phase/possession → match over. Stop immediately after a winning basket.
+State includes score, possession team, phase type (normal/rebound), phase number, positions, ball holder, six ratings records, six remaining allowances, selected strategy, RNG state, planning/executing mode, committed plan and cursor, and match status. Resolution states are planning → committed execution → movement/pass/defense/shot or expiry → fresh planning or match over. Stop immediately after a winning basket.
 
 Use stable seeded randomness. Log action costs, legal defensive reactions, calculated chances, outcomes, rebound identity, phase allowance resets, and possession changes. No hidden extra actions. Keep formulas and tuning constants independent of rendering.
 
@@ -112,14 +109,14 @@ Use stable seeded randomness. Log action costs, legal defensive reactions, calcu
 2. **Defended rim:** shooter at `(0,0)`, defender at `(-1,1)` with defense 80, shooter finishing 70, and equal shooter/defender height. Base 0.73 minus adjacent pressure 0.14 gives 0.59. Attempt is a two-point shot, not a guaranteed dunk. A roll of 0.58 scores; 0.59 misses.
 3. **Repeated offensive rebounds:** normal stamina [5,6,4] resets to [3,4,2] after the first offensive rebound, regardless of unspent moves. A later offensive rebound resets to [3,4,2] again. Preserve locations and give the rebounder the ball.
 4. **Defensive rebound:** any miss secured by defense ends the possession, resets court positions, and restores normal allowances [5,6,4] for that team. The next possession is not a reduced phase.
-5. **Last-move shot versus stranded ball:** a shooter with one move can shoot and resolve normally. Passing to a teammate with zero moves is legal with a warning; if completed, it produces a violation. No automatic free shot.
+5. **Last-move shot versus stranded ball:** a shooter with one move can shoot and resolve normally. Passing to an exhausted teammate is legal, but that teammate cannot shoot. Continue the scheduled steps and expire if no shot occurs. No automatic free shot.
 6. **Three to win:** at 20 points a made three ends the game at 23. Do not start another possession or require an exact score of 21.
-7. **Finite reactions:** each successful pass permits at most one legal one-hex defensive movement costing one. Repeated passes spend offense and defense allowance; no defender can move after their allowance reaches zero, though they still contest.
+7. **Finite reactions:** each timeline step with successful setup permits at most one legal one-hex defensive movement costing one, regardless of setup-action count. Repeated passes spend offense and defense allowance; no defender can move after their allowance reaches zero, though they still contest.
 8. **Invalid action:** trying to move two hex steps or spend zero available allowance changes neither state nor RNG.
 
 9. **Rare stamina extremes:** a stamina-3 center gets three normal moves and two on every rebound phase; a stamina-7 guard gets seven normal moves and four on every rebound phase. The distribution target must not silently change these allowances.
 10. **Height tradeoff:** at equal position and rebounding rating, a 215 cm athlete has rebound weight factor 1.20 while a 180 cm athlete has 0.85. A 215 cm defender contesting a 180 cm shooter at the rim adds the capped 0.04 pressure modifier; the reverse matchup subtracts 0.04. An open under-rim dunk remains guaranteed at either height.
 
-## Implementation status through milestone 4
+## Implementation status through milestone 5
 
-The rules engine and browser court now use axial hex coordinates. Migrated basketball scenarios and additional geometry tests pass. Planned plays and timeline execution remain milestone 5; balance, screens, richer AI, and presentation improvements remain later work.
+The rules engine and browser court now use axial hex coordinates. Migrated basketball scenarios and additional geometry tests pass. Planned plays and timeline execution are implemented; feedback refinement remains milestone 6; balance, screens, richer AI, and presentation improvements remain later work.

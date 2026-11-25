@@ -1,55 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GameSession } from '../web/session.js';
-import { chooseOffensiveAction, legalActions } from '../src/engine.js';
 
-test('manual turn flow: select off-ball player, move, pass and select receiver', () => {
-  const session = new GameSession(0);
-  session.selectPlayer('human-1');
-  const move = legalActions(session.state).find(a => a.type === 'move' && a.athlete === 'human-1');
-  assert.ok(move); session.play(move);
-  assert.equal(session.selectedId, 'human-1');
-  const pass = legalActions(session.state).find(a => a.type === 'pass' && a.to === 'human-1');
-  assert.ok(pass); session.play(pass);
-  const passed = session.state.events.findLast(e => e.type === 'pass');
-  assert.ok(passed?.success);
-  assert.equal(session.state.ballHolder, 'human-1');
-  assert.equal(session.selectedId, 'human-1');
+test('editing and reordering drafts does not move players, consume stamina, or draw RNG', () => {
+  const session = new GameSession(), before = structuredClone(session.state);
+  session.assign({type:'move',athlete:'human-0',to:'-3,4'});
+  session.selectSlot('human-0',0); session.shiftSlot(1);
+  assert.equal(session.draft.rows['human-0'][0].type,'hold');
+  assert.equal(session.draft.rows['human-0'][1].type,'move');
+  assert.deepEqual(session.state,before);
+  session.clearSlot(); assert.equal(session.draft.rows['human-0'][1].type,'hold');
+  session.clearPlan(); assert.deepEqual(session.state,before);
 });
 
-test('opponent is paused for strategy choice, steps legally, and returns control', () => {
-  const session = new GameSession(42);
-  session.play({ type: 'end-possession' });
-  const frozen = structuredClone(session.state);
-  assert.equal(session.state.possession, 'ai');
-  assert.equal(session.state.strategyOpen, true);
-  session.selectPlayer('human-2');
-  assert.deepEqual(session.state, frozen);
-  session.chooseStrategy('protect-paint');
-  assert.throws(() => session.play({ type: 'end-possession' }), /Wait/);
-  let steps = 0;
-  while (session.state.possession === 'ai' && steps++ < 100) session.nextOpponentAction();
-  assert.ok(steps < 100);
-  assert.equal(session.state.possession, 'human');
-  assert.equal(session.selectedId, session.state.ballHolder);
-  assert.throws(() => session.nextOpponentAction(), /not playing/);
+test('commit locks edits, all-hold phase expires, and opponent returns control', () => {
+  const session = new GameSession(); session.commit();
+  assert.throws(()=>session.clearPlan(),/only be assigned/);
+  while(String(session.state.mode)==='executing') session.step();
+  assert.equal(session.state.possession,'ai');
+  session.chooseStrategy('protect-paint'); session.startOpponentPlay();
+  while(String(session.state.mode)==='executing') session.step();
+  assert.equal(session.state.mode,'planning');
+  assert.equal(session.state.playback,null);
 });
 
-test('full game through the UI session ends and rejects extra actions; restart clears state', () => {
-  const session = new GameSession(42);
-  let steps = 0;
-  while (session.state.status === 'playing' && steps++ < 1500) {
-    if (session.state.possession === 'ai') session.nextOpponentAction();
-    else {
-      const action = chooseOffensiveAction(session.state);
-      assert.ok(action); session.play(action);
-    }
-  }
-  assert.equal(session.state.status, 'over');
-  assert.throws(() => session.play({ type: 'end-possession' }));
-  assert.throws(() => session.nextOpponentAction());
-  const restart = new GameSession(42);
-  assert.deepEqual(restart.state.scores, { human: 0, ai: 0 });
-  assert.equal(restart.state.phaseNumber, 1);
-  assert.equal(restart.selectedId, restart.state.ballHolder);
+test('failed commit preserves draft for correction and new game starts with all holds', () => {
+  const session = new GameSession(); session.selectPlayer('human-1');
+  session.assign({type:'shoot',athlete:'human-1'});
+  assert.throws(()=>session.commit(),/will not have the ball/);
+  assert.equal(session.state.mode,'planning');
+  session.selectSlot('human-1',0); session.clearSlot(); session.commit();
+  assert.equal(session.state.mode,'executing');
+  const fresh = new GameSession();
+  assert.equal(fresh.state.phaseNumber,1);
+  assert.ok(Object.values(fresh.draft.rows).every(row=>row.every(a=>a.type==='hold')));
 });

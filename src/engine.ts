@@ -1,6 +1,7 @@
-import type { Action, DefensiveReaction, EventDetails, GameEvent, GameState, Phase, Player, ShotPreview, Strategy, Team, HexId } from './types.js';
+import type { Action, DefensiveReaction, EventDetails, GameEvent, GameState, Phase, Player, ShotPreview, Strategy, Team, HexId, PlannedAction } from './types.js';
 export type * from './types.js';
 import { defaultRoster } from './roster.js';
+import { movementProblems } from './movement.js';
 
 import { COURT, CHECK_POSITIONS, RIM, cell, distance } from './court.js';
 export { COURT, distance } from './court.js';
@@ -36,8 +37,8 @@ function validateRoster(players: Player[]): void {
     if (typeof p.id !== 'string' || !p.id || ids.has(p.id)) throw new Error('Unique athlete IDs required');
     ids.add(p.id);
     if (!['human', 'ai'].includes(p.team)) throw new Error('Unknown team');
-    if (!Number.isInteger(p.stamina) || p.stamina < 3 || p.stamina > 7) throw new Error('Stamina must be 3â€“7');
-    if (!Number.isFinite(p.height) || p.height < 140 || p.height > 250) throw new Error('Height must be 140â€“250 cm');
+    if (!Number.isInteger(p.stamina) || p.stamina < 3 || p.stamina > 7) throw new Error('Stamina must be 3–7');
+    if (!Number.isFinite(p.height) || p.height < 140 || p.height > 250) throw new Error('Height must be 140–250 cm');
     for (const key of ['shooting', 'finishing', 'passing', 'defense', 'rebounding'] as const) {
       if (!Number.isInteger(p[key]) || p[key] < 0 || p[key] > 100) throw new Error(`Invalid ${key} rating`);
     }
@@ -53,7 +54,7 @@ export function createGame({ seed = 1, players = defaultRoster() }: { seed?: num
     players: structuredClone(players), scores: { human: 0, ai: 0 },
     possession: 'human', ballHolder: players[0].id, positions: {}, remaining: {},
     phase: 'normal', phaseNumber: 0, strategy: 'balanced', strategyOpen: false,
-    rng: seed >>> 0, status: 'playing', winner: null, events: [],
+    rng: seed >>> 0, status: 'playing', mode: 'planning', playback: null, winner: null, events: [],
   };
   startPhase(state, 'normal', true);
   return state;
@@ -61,6 +62,7 @@ export function createGame({ seed = 1, players = defaultRoster() }: { seed?: num
 
 function startPhase(s: GameState, phase: Phase, reset: boolean): void {
   s.phase = phase; s.phaseNumber++;
+  s.mode = 'planning'; s.playback = null;
   for (const p of s.players) s.remaining[p.id] = phaseAllowance(p.stamina, phase);
   if (reset) {
     for (const team of ['human', 'ai'] as const) {
@@ -234,6 +236,11 @@ function defensiveReaction(s: GameState): void {
 
 /** Pure transition: invalid actions throw without changing state or random sequence. */
 export function applyAction(state: GameState, action: Action | null | undefined): GameState {
+  if (state.mode === 'executing') throw new Error('Cannot assign actions during playback');
+  return resolveAction(state, action, true, true);
+}
+
+function resolveAction(state: GameState, action: Action | null | undefined, react: boolean, expire: boolean): GameState {
   const valid = validateAction(state, action);
   const s = structuredClone(state);
   s.strategyOpen = false;
@@ -248,7 +255,7 @@ export function applyAction(state: GameState, action: Action | null | undefined)
     if (made) {
       s.scores[s.possession] += preview.points;
       if (s.scores[s.possession] >= TUNING.targetScore) {
-        s.status = 'over'; s.winner = s.possession;
+        s.status = 'over'; s.mode = 'over'; s.playback = null; s.winner = s.possession;
         emit(s, 'match-over', { winner: s.winner, scores: { ...s.scores } });
       } else changePossession(s, 'made-basket');
     } else resolveRebound(s);
@@ -268,8 +275,8 @@ export function applyAction(state: GameState, action: Action | null | undefined)
     }
     s.positions[valid.athlete] = valid.to;
   }
-  defensiveReaction(s);
-  if (s.remaining[s.ballHolder] === 0) {
+  if (react) defensiveReaction(s);
+  if (expire && s.remaining[s.ballHolder] === 0) {
     emit(s, 'phase-violation', { athlete: s.ballHolder });
     changePossession(s, 'phase-violation');
   }
@@ -298,4 +305,62 @@ export function chooseOffensiveAction(s: GameState): Action | null {
     if (value > bestValue + 1e-10) { best = action; bestValue = value; }
   }
   return best;
+}
+
+/** One simultaneous timeline step, independent of playback speed or wall time. */
+export function applyPlannedStep(state: GameState, actions: PlannedAction[], step: number): GameState {
+  let s = structuredClone(state);
+  s.strategyOpen = false;
+  emit(s, 'timeline-step', { step });
+  const ordered = [...actions].sort((a, b) => a.athlete.localeCompare(b.athlete));
+  for (const a of ordered) if (a.type === 'hold') emit(s, 'hold', { athlete: a.athlete, step, cost: 0 });
+  const skip = (a: PlannedAction, reason: string): void => {
+    const cost = s.remaining[a.athlete] > 0 ? 1 : 0;
+    s.remaining[a.athlete] -= cost;
+    emit(s, 'skipped-action', { athlete: a.athlete, step, reason, cost });
+  };
+  const blocked = movementProblems(s, actions);
+  // Compute against the step-start board; apply all surviving targets together.
+  const destinations: Record<string, HexId> = {};
+  let successfulSetup = false, driveTurnover = false;
+  for (const a of ordered) if (a.type === 'move') {
+    if (s.remaining[a.athlete] <= 0) { skip(a, 'No stamina remains for movement'); continue; }
+    if (blocked.has(a.athlete)) { skip(a, blocked.get(a.athlete)!); continue; }
+    const drive = a.athlete === s.ballHolder;
+    s.remaining[a.athlete]--;
+    emit(s, 'action', { actionType: drive ? 'drive' : 'move', athlete: a.athlete, to: a.to, cost: 1 });
+    if (drive) {
+      const risk = driveRisk(s, a.athlete, a.to), roll = risk ? draw(s) : null;
+      const success = roll === null || roll >= risk;
+      emit(s, 'drive', { athlete: a.athlete, to: a.to, turnoverProbability: risk, roll, success });
+      if (!success) { driveTurnover = true; continue; }
+    }
+    destinations[a.athlete] = a.to; successfulSetup = true;
+  }
+  Object.assign(s.positions, destinations);
+  if (driveTurnover) { changePossession(s, 'drive-turnover'); return s; }
+  const startHolder = s.ballHolder;
+  for (const a of ordered) if (a.type === 'pass') {
+    if (a.athlete !== startHolder || a.athlete !== s.ballHolder || s.remaining[a.athlete] <= 0) {
+      skip(a, 'Pass dependency failed: player does not have the ball or a move'); continue;
+    }
+    s = resolveAction(s, a, false, false);
+    if (s.phaseNumber !== state.phaseNumber) return s;
+    successfulSetup = true;
+  }
+  if (successfulSetup) defensiveReaction(s);
+  for (const a of ordered) if (a.type === 'shoot') {
+    if (a.athlete !== s.ballHolder || s.remaining[a.athlete] <= 0) {
+      skip(a, 'Shot dependency failed: player does not have the ball or a move'); continue;
+    }
+    return resolveAction(s, a, false, false);
+  }
+  return s;
+}
+
+export function expirePlannedPhase(state: GameState): GameState {
+  const s = structuredClone(state);
+  emit(s, 'phase-violation', { athlete: s.ballHolder, reason: 'Timeline ended without a shot' });
+  changePossession(s, 'timeline-exhausted');
+  return s;
 }

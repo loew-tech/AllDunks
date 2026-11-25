@@ -3,7 +3,7 @@
 ## MUST
 
 1. Hex coordinates — implemented in phase 4.
-2. Assign all actions first, then play out the sequence—like a coach calling a play during a timeout.
+2. Assign all actions first, then play out the sequence—like a coach calling a play during a timeout — implemented in phase 5.
    - Let S be the highest offensive-player action allowance in the current phase. Give every player S timeline slots, all initialized to hold. Each player can hold for the entire phase and is never required to perform an active action.
    - The coach may replace holds with active actions anywhere in the timeline. A player with allowance N can spend at most N stamina on active actions; remaining slots stay holds. Active actions and holds together occupy exactly S slots, not S additional holds beyond active actions.
    - Holds keep the player in place, cost no stamina, and do not restore stamina, extend the phase, or generate extra defensive reactions. Holding players still contest and rebound normally.

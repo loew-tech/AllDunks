@@ -1,5 +1,6 @@
+import { commitPlan, stepPlay, chooseOffensivePlan } from '../src/plans.js';
 import type { Player } from '../src/types.js';
-import { createGame, applyAction, chooseOffensiveAction } from '../src/engine.js';
+import { createGame } from '../src/engine.js';
 import { defaultRoster, PLAYER_POOL } from '../src/roster.js';
 
 const count = Number(process.argv[2] ?? 30);
@@ -9,7 +10,8 @@ function simulate(seed: number, players: Player[]) {
   let state = createGame({ seed, players });
   let actions = 0;
   while (state.status === 'playing' && actions < 2000) {
-    state = applyAction(state, chooseOffensiveAction(state)); actions++;
+    if (state.mode === 'planning') state = commitPlan(state, chooseOffensivePlan(state));
+    state = stepPlay(state); actions++;
   }
   if (state.status !== 'over') throw new Error(`Game failed to finish: seed ${seed}`);
   const shots = state.events.filter(e => e.type === 'shot');
@@ -37,6 +39,6 @@ for (const variant of ['default', 'rare-lineups']) {
     for (const key of ['actions', 'quality', 'rebounds', 'spentMoves'] as const) totals[key] += result[key];
   }
   console.log(JSON.stringify({ variant, games: totals.games, humanWins: totals.humanWins,
-    averageActions: totals.actions / totals.games, averageShotQuality: totals.quality / totals.games,
+    averageSteps: totals.actions / totals.games, averageShotQuality: totals.quality / totals.games,
     averageRebounds: totals.rebounds / totals.games, averageSpentMoves: totals.spentMoves / totals.games }));
 }
