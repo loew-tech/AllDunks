@@ -31,7 +31,7 @@ function courtMarkup(actions: PlannedAction[]): string {
     const selected = s.positions[session.selectedId] === c.id;
     const defenders = s.players.filter(p => p.team !== s.possession && distance(s.positions[p.id], c.id) <= 1).length;
     const occupied = Object.values(s.positions).includes(c.id);
-    return `<g class="hex-cell ${c.area} ${c.paint ? 'paint' : ''} ${c.underRim ? 'under-rim' : ''} ${legal ? 'available' : ''} ${selected ? 'selected-cell' : ''} ${occupied ? 'occupied' : ''}"
+    return `<g class="hex-cell ${c.area} ${c.paint ? 'paint' : ''} ${c.underRim ? 'under-rim' : ''} ${legal ? 'available' : ''} ${selected ? 'selected-cell' : ''} ${selected && session.canEdit ? 'active-planner' : ''} ${occupied ? 'occupied' : ''}"
       ${legal ? `role="button" tabindex="0" data-hex="${c.id}" aria-label="Move to ${center.name}, one move${defenders ? ', defended' : ', undefended'}"` : ''}>
       <title>${center.name} · ${c.area === 'three' ? '3 points' : '2 points'}${c.underRim ? ' · open dunk eligible' : ''} · ${defenders} defenders in range</title>
       <polygon points="${polygonPoints(c.id)}"/>
@@ -58,10 +58,18 @@ function courtMarkup(actions: PlannedAction[]): string {
       <circle class="token-body" r="25"/><text class="token-number" text-anchor="middle" y="7">${i % 3 + 1}</text>
       <rect x="-17" y="22" width="34" height="18" rx="6" fill="#20372c"/>
       <text class="token-stamina" text-anchor="middle" y="35">${s.remaining[p.id]}/${p.stamina}</text>
-      <text class="token-name" text-anchor="middle" y="${shared && p.team === 'human' ? -61 : -39}">${escape(p.name)}</text>
+      <text class="token-name" text-anchor="middle" y="${selected && session.canEdit ? 58 : shared && p.team === 'human' ? -61 : -39}">${escape(p.name)}</text>
       ${hasBall ? '<circle class="ball" cx="24" cy="-15" r="10"/><path d="M14 -15h20M24 -25v20" stroke="#653a1c" fill="none" stroke-width="1.2"/>' : ''}
     </g>`;
   }).join('');
+  const activeCenter = cells[s.positions[session.selectedId]];
+  const activeShared = s.players.some(p => p.id !== session.selectedId && s.positions[p.id] === s.positions[session.selectedId]);
+  const holdControl = session.canEdit ? `<g class="court-hold" role="button" tabindex="0"
+    data-command="hold-active" aria-label="Hold for ${escape(s.players.find(p => p.id === session.selectedId)!.name)}, step ${session.selectedStep + 1}"
+    transform="translate(${activeCenter.x + (activeShared ? -24 : 0)} ${activeCenter.y - 54})">
+    <rect x="-42" y="-18" width="84" height="36" rx="10"/>
+    <text text-anchor="middle" y="6">HOLD</text><title>Hold this step for free, then select the next teammate</title>
+  </g>` : '';
   return `<svg class="court" viewBox="0 0 900 670" role="group" aria-label="Half court. Mint players are your team. Highlighted hexes are legal moves; orange dots indicate defensive coverage.">
     <defs><pattern id="boards" width="90" height="44" patternUnits="userSpaceOnUse">
       <rect width="90" height="44" fill="#bc8652"/><path d="M0 0H90M0 44H90M0 0V44" stroke="#855e3d" stroke-width="1" opacity=".35"/>
@@ -76,9 +84,9 @@ function courtMarkup(actions: PlannedAction[]): string {
     <text x="450" y="485" text-anchor="middle" fill="#5c422f" opacity=".33" style="font:900 52px system-ui;letter-spacing:-3px">ALLDUNKS</text>
     ${targets}
     <path d="M${450 - THREE_RADIUS} 45V120A${THREE_RADIUS} ${THREE_RADIUS} 0 0 0 ${450 + THREE_RADIUS} 120V45" class="scoring-arc"/>
-    <text x="450" y="30" text-anchor="middle" class="court-key">RIM (0,0) · 2 POINTS INSIDE ARC / 3 OUTSIDE</text>
+    <text x="450" y="653" text-anchor="middle" class="court-key">RIM (0,0) · 2 POINTS INSIDE ARC / 3 OUTSIDE</text>
     <path style="pointer-events:none" d="M409 65H491" stroke="#fff5d6" stroke-width="7"/><circle cx="450" cy="86" r="16" fill="none" stroke="#f56632" stroke-width="5"/>
-    ${routes}${tokens}
+    ${routes}${tokens}${holdControl}
   </svg>`;
 }
 
@@ -122,7 +130,7 @@ function render(): void {
   const selected = s.players.find(p => p.id === session.selectedId)!;
   const label = s.status === 'over' ? 'Game over' : s.phase === 'rebound' ? 'Rebound phase · ⅔ moves' : `Phase ${s.phaseNumber} · ${s.mode === 'executing' ? 'Executing' : 'Planning'}`;
   const caption = s.status === 'over' ? 'Game finished. Play again to start a fresh matchup.' : isHumanTurn()
-    ? `${selected.name}: assigning step ${session.selectedStep + 1}. Click a hex to schedule movement; the court is a forecast, not live execution.`
+    ? `${selected.name} is active (gold hex). Choose an action or Hold above the player. Planning cycles through all three players before the next step.`
     : s.mode === 'executing' ? 'Committed play. Use playback controls to run, pause, or step; assignments are locked.' : 'Choose defensive coverage, then run the opponent’s committed play.';
   const log = s.events.map(e => ({ phase: e.phase, text: eventText(e) })).filter(e => e.text !== null).slice(-24).reverse();
   root.innerHTML = `<div class="shell">
@@ -134,10 +142,10 @@ function render(): void {
       <div class="score-team away"><div><div class="team-name">VISITORS</div><div class="team-label">AI team · orange</div></div><div class="score-number">${s.scores.ai.toString().padStart(2, '0')}</div></div>
     </section>
     ${error ? `<p role="alert" class="notice error">${escape(error)}</p>` : ''}
-    <div class="game-layout"><div><section class="court-panel"><div class="court-heading"><div><h1>${isHumanTurn() ? 'Call your play.' : s.status === 'over' ? 'Final whistle.' : 'Get a stop.'}</h1><p>Hex court · 1 move per cell · orange dots mark covered destinations.</p></div><div class="legend"><span><b></b>Your team</span><span><b></b>Opponent</span></div></div>
+    <div class="game-layout"><div><section class="court-panel"><div class="court-heading"><div><h1>${isHumanTurn() ? escape(selected.name) + ': choose an action' : s.status === 'over' ? 'Final whistle.' : s.mode === 'executing' ? 'Play in motion.' : 'Get a stop.'}</h1><p>${session.canEdit ? `Step ${session.selectedStep + 1} of ${session.draft.slots} · Player ${s.players.filter(p => p.team === 'human').findIndex(p => p.id === session.selectedId) + 1} of 3 · Hold is free` : 'Hex court · orange dots mark covered destinations'}</p></div><div class="legend"><span><b></b>Your team</span><span><b></b>Opponent</span></div></div>
       ${courtMarkup(actions)}<div class="court-caption">${escape(caption)}</div></section>
       ${timelineMarkup(session)}<div class="below-court"><section class="panel"><h2>Play-by-play <small>Latest first</small></h2><ol class="log">${log.map(e => `<li><span class="log-phase">P${e.phase}</span>${e.text}</li>`).join('')}</ol></section>
-      <section class="panel howto"><h2>The game plan <small>How to play</small></h2><p><strong>Select a timeline slot</strong> for any mint player. Assign a move, pass, shot, or hold. The court previews the selected step.</p>
+      <section class="panel howto"><h2>The game plan <small>How to play</small></h2><p><strong>Follow the gold hex</strong> to the active player. Assign an action or use Hold above them; the next teammate becomes active automatically. After all three, planning advances one step. You can still click timeline slots to edit.</p>
       <p><strong>Create a shot.</strong> Assign actions for all three players, then run the play. Each step resolves movement, passing, one defensive response, then shooting.</p>
       <details><summary>Stamina, rebounds &amp; dunks</summary><ul><li>Each player has their own move budget for the phase; shooting costs one too.</li><li>After an offensive rebound, everyone resets to ⅔ of normal stamina, rounded down.</li><li>Undefended directly under the rim? The shot is a guaranteed dunk. With a defender nearby, it is a normal shot at the rim.</li><li>Holds cost nothing. A player may hold for every slot. If the timeline ends without a shot, possession turns over.</li><li>All possession changes reset to a check at the top. First to reach 21 wins.</li></ul></details>
       <div class="toolbar-bottom"><label for="seed">Game seed</label><input id="seed" type="number" step="1" value="${seed}" aria-label="Game seed"><button data-command="new-game">Restart with seed</button></div></section></div>
@@ -185,7 +193,8 @@ function activate(target: Element): void {
       const nextSeed = Number(root.querySelector<HTMLInputElement>('#seed')?.value ?? seed);
       if (!Number.isSafeInteger(nextSeed)) throw new Error('Enter a whole number for the game seed.');
       stopPlayback(); seed = nextSeed; session = new GameSession(seed);
-    } else if (command === 'clear-slot') session.clearSlot();
+    } else if (command === 'hold-active') session.assign({ type: 'hold', athlete: session.selectedId });
+    else if (command === 'clear-slot') session.clearSlot();
     else if (command === 'clear-plan') session.clearPlan();
     else if (command === 'earlier') session.shiftSlot(-1);
     else if (command === 'later') session.shiftSlot(1);

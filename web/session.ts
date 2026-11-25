@@ -6,6 +6,7 @@ export class GameSession {
   state: GameState;
   selectedId: string;
   selectedStep = 0;
+  cycleComplete = false;
   draft: PlayPlan;
 
   constructor(seed = 42) {
@@ -20,7 +21,7 @@ export class GameSession {
 
   selectPlayer(id: string): void {
     if (!this.state.players.some(p => p.id === id && p.team === 'human')) throw new Error('Select one of your players');
-    this.selectedId = id;
+    this.selectedId = id; this.cycleComplete = false;
   }
 
   selectSlot(id: string, step: number): void {
@@ -33,14 +34,19 @@ export class GameSession {
     this.assertEditable();
     if (action.athlete !== this.selectedId) throw new Error('Assignment must belong to selected player');
     this.draft.rows[this.selectedId][this.selectedStep] = structuredClone(action);
-    this.selectedStep = Math.min(this.draft.slots - 1, this.selectedStep + 1);
+    const players = this.state.players.filter(p => p.team === 'human');
+    const index = players.findIndex(p => p.id === this.selectedId);
+    if (index < players.length - 1) this.selectedId = players[index + 1].id;
+    else if (this.selectedStep < this.draft.slots - 1) {
+      this.selectedId = players[0].id; this.selectedStep++;
+    } else this.cycleComplete = true;
   }
 
   clearSlot(): void {
     this.assertEditable();
     this.draft.rows[this.selectedId][this.selectedStep] = { type: 'hold', athlete: this.selectedId };
   }
-  clearPlan(): void { this.assertEditable(); this.draft = emptyPlan(this.state); this.selectedStep = 0; }
+  clearPlan(): void { this.assertEditable(); this.draft = emptyPlan(this.state); this.selectedStep = 0; this.cycleComplete = false; this.selectedId = this.state.players.find(p => p.team === 'human')!.id; }
 
   shiftSlot(direction: -1 | 1): void {
     this.assertEditable(); const next = this.selectedStep + direction;
@@ -61,8 +67,8 @@ export class GameSession {
   step(): void {
     this.state = stepPlay(this.state);
     if (this.state.mode === 'planning') {
-      this.draft = emptyPlan(this.state); this.selectedStep = 0;
-      if (this.state.possession === 'human') this.selectedId = this.state.ballHolder;
+      this.draft = emptyPlan(this.state); this.selectedStep = 0; this.cycleComplete = false;
+      if (this.state.possession === 'human') this.selectedId = this.state.players.find(p => p.team === 'human')!.id;
     }
   }
 

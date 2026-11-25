@@ -12,7 +12,7 @@ After an offensive rebound, reset allowances to floor(normal stamina × 2/3), re
 
 One assignment per player per slot: hold, adjacent movement, pass to a teammate, or shoot. Movement by the ball holder becomes a dribble/drive during execution. All active actions cost one move. A player cannot move and shoot in the same slot, but can receive a pass and shoot in that slot.
 
-Select a timeline cell to edit that player's slot. Assigning an action advances the selection to the next slot. Clear returns a slot to hold; earlier/later swaps it with its neighbor in that player's row. Clearing the play restores all holds.
+Select a timeline cell to edit that player's slot. Assigning an action cycles to the next teammate at the same step. After the third teammate, advance to the next step and the first teammate. At the end of the final step, keep the final slot selected for review instead of wrapping and overwriting earlier assignments. The active player’s hex glows gold; the Hold button above the player assigns a zero-cost hold and follows this same cycle. New phases start with the first roster player. Direct timeline edits remain available. Clear returns a slot to hold; earlier/later swaps it with its neighbor in that player's row. Clearing the play restores all holds.
 
 The court forecasts positions immediately before the selected step. Dashed paths show planned movement. Forecasts assume offensive actions succeed and defenders stay at their current positions; displayed odds are estimates, not guarantees. Validation and editing never consume RNG, live stamina, or live court state.
 

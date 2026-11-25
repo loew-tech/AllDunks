@@ -23,4 +23,10 @@
 @media(max-width:760px){.timeline-panel{order:2}.below-court{order:3}.timeline-panel h2 small{font-size:.72rem}.timeline{min-width:620px}}
 
 .game-layout>div{min-width:0}.timeline-panel{min-width:0}
+.court .hex-cell.active-planner polygon{fill:#ffcd42;fill-opacity:.72;stroke:#ffe582;stroke-opacity:1;stroke-width:5;filter:drop-shadow(0 0 9px #ffce43) drop-shadow(0 0 3px #fff3ac)}
+.court .player-token.selected .selection{stroke:#ffe582}
+.court .court-hold{cursor:pointer;outline:none}
+.court .court-hold rect{fill:#ffdc79;stroke:#6b4c19;stroke-width:2.5;filter:drop-shadow(0 3px 4px #3a2c2270)}
+.court .court-hold text{fill:#392b14;font:850 20px ui-sans-serif,system-ui;letter-spacing:.08em;pointer-events:none}
+.court .court-hold:hover rect,.court .court-hold:focus-visible rect{fill:#fff0ad;stroke:#fff9d7;stroke-width:4}
 @media(max-width:760px){.timeline-panel{order:1}.sidebar{order:2}}

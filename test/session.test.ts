@@ -35,3 +35,42 @@ test('failed commit preserves draft for correction and new game starts with all 
   assert.equal(fresh.state.phaseNumber,1);
   assert.ok(Object.values(fresh.draft.rows).every(row=>row.every(a=>a.type==='hold')));
 });
+
+test('assignments cycle teammates within a step before advancing time', () => {
+  const session = new GameSession(), before = structuredClone(session.state);
+  session.assign({type:'hold',athlete:'human-0'});
+  assert.equal(session.selectedId,'human-1'); assert.equal(session.selectedStep,0);
+  session.assign({type:'move',athlete:'human-1',to:'-5,3'});
+  assert.equal(session.selectedId,'human-2'); assert.equal(session.selectedStep,0);
+  session.assign({type:'hold',athlete:'human-2'});
+  assert.equal(session.selectedId,'human-0'); assert.equal(session.selectedStep,1);
+  assert.equal(session.preview.positions['human-1'],'-5,3');
+  assert.deepEqual(session.state,before);
+});
+
+test('holding through the whole timeline ends at the final slot without wrapping', () => {
+  const session = new GameSession(), before = structuredClone(session.state);
+  for (let turn=0;turn<18;turn++) {
+    assert.equal(session.selectedId,`human-${turn%3}`);
+    assert.equal(session.selectedStep,Math.floor(turn/3));
+    assert.equal(session.cycleComplete,false);
+    session.assign({type:'hold',athlete:session.selectedId});
+  }
+  assert.equal(session.cycleComplete,true);
+  assert.equal(session.selectedId,'human-2'); assert.equal(session.selectedStep,5);
+  assert.deepEqual(session.state,before);
+  assert.ok(Object.values(session.draft.rows).every(row=>row.every(a=>a.type==='hold')));
+  session.commit(); assert.equal(session.state.mode,'executing');
+});
+
+test('manual timeline edits resume cycling locally and clear resets the first player', () => {
+  const session = new GameSession();
+  session.selectSlot('human-1',2);
+  session.assign({type:'hold',athlete:'human-1'});
+  assert.equal(session.selectedId,'human-2'); assert.equal(session.selectedStep,2);
+  session.assign({type:'hold',athlete:'human-2'});
+  assert.equal(session.selectedId,'human-0'); assert.equal(session.selectedStep,3);
+  session.clearPlan();
+  assert.equal(session.selectedId,'human-0'); assert.equal(session.selectedStep,0);
+  assert.equal(session.cycleComplete,false);
+});
