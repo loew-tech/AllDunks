@@ -1,179 +1,206 @@
-# AllDunks — Initial Game Plan
+# AllDunks — Development Plan
 
-## Vision
+## Vision and current status
 
-A single-player, phase-based, 3-on-3 basketball browser game focused on tactical choices, court positioning, and calculated risk. AllDunks is the title, not a restriction on gameplay: passing, jump shots, layups, drives, screens, rebounds, and defense all matter. Dunks can be one finishing option, not the central mechanic.
+A single-player, phase-based, 3-on-3 basketball browser game about coaching: assign a team's actions during a planning phase, then watch the play unfold against a reacting defense. AllDunks is the title; passing, jump shots, layups, drives, screens, rebounds, and dunks all have a place.
 
-Status: initial planning. No implementation stack has been selected.
+The initial TypeScript engine and playable browser prototype are implemented on `codex/core-rules`. They currently use 11 named court zones and immediate actions. The next release replaces that interaction with a hex court and planned plays, with clear feedback as a release requirement. Existing validation describes the old prototype; it does not establish that these new requirements are complete.
 
-## Confirmed requirements
+See [TODO.md](TODO.md) for priorities, [README.md](README.md) for running the current prototype, and [core-rules.md](core-rules.md) for its existing rules. This plan takes precedence for future development. Update the detailed rules alongside the hex and timeline implementation so the documents agree.
 
-- One human player controls a three-player team against an AI team.
-- Play is organized into phases rather than continuous real-time action.
-- Each athlete has a stamina stat that determines how many moves they can make in a phase.
-- The human team's defense resolves through probability-based calculations.
-- AI defense must make competent, understandable basketball decisions.
-- An offensive rebound begins a new offensive phase with floor(normal phase stamina × 2/3) moves per athlete, representing the shorter remaining shot clock. Round down exactly; there is no minimum-one override.
+## Confirmed basketball requirements
 
-## Accepted first playable scope
+- One human controls three players against three AI players on a top-down half court.
+- Reach or exceed 21 points to win. Inside-arc baskets score two; outside-arc baskets score three. No exact-score requirement.
+- Each player's stamina determines their phase action budget. Most have 4–6 stamina; rare exceptions have 3 or 7, balanced through height and other strengths or weaknesses. Keep the provisional larger-roster target of at least 90% within 4–6.
+- Height matters for at-rim contests and rebounding. Slow centers typically gain height and interior strengths; fast guards typically sacrifice height and rebounding.
+- An offensive rebound starts a fresh planning phase with floor(normal stamina × 2/3) moves per player. Always calculate from normal stamina; repeated rebounds do not compound the reduction. No minimum-one override.
+- An undefended attempt directly under the rim is a guaranteed two-point dunk. A defended attempt there resolves as a regular probability-based shot at the rim.
+- Human defense resolves automatically through ratings, positioning, strategy, and probability. AI defense must respect movement budgets and make competent coverage decisions.
 
-Use a top-down half court and games to 11, with two-point baskets inside the arc and three-point baskets outside it. Start with court zones or a small grid to make movement, spacing, and legal actions clear. Use six fixed athletes and a small set of meaningful stats before adding roster building or progression. This first-playable scope is accepted; the exact court representation remains to be chosen.
+## Priorities
 
-The player should win through creating good opportunities, not repeatedly exploiting one dominant action.
+### MUST — next playable release
 
-## Possession and phase flow
+1. **Hex coordinates:** replace named-zone movement and distance with a bounded hex court shared by rules, AI, previews, and rendering.
+2. **Plan first, execute second:** assign all offensive actions before committing the play, like a coach calling a play in a timeout. Playback executes the submitted sequence without further action assignment.
+3. **Clear user feedback:** show the planned play, action costs and risks, the current event during execution, and understandable reasons for success, failure, possession changes, and rebound resets. Include pause, speed, and single-step controls. An event log alone does not satisfy this requirement.
 
-1. Start a possession and assign each offensive athlete their phase move allowance from stamina.
-2. On human offense, select an athlete and perform a legal action, paying its move cost.
-3. Let AI defenders react to that action under a defined reaction budget.
-4. Continue until the offense shoots, turns the ball over, or exhausts the phase allowance.
-5. Resolve a shot using shooter ability, shot location, defensive pressure, and other visible modifiers.
-6. Resolve a missed shot into an offensive rebound, defensive rebound, or dead ball.
-7. On an offensive rebound, start a new offensive phase with the reduced allowance.
-8. On a defensive rebound, made basket, or turnover, change possession and start the appropriate next phase.
-9. On AI offense, resolve its attack against the human team's defensive ratings, positioning or abstract coverage, and selected defensive strategy.
+Feedback is part of each MUST milestone, not work postponed until visual polish. The next playable release is incomplete until all three are usable together.
 
-Before implementation, specify the possession/check-ball rules, dead-ball handling, and what happens when a phase expires without a shot. A shot-clock violation is the initial candidate for phase expiry.
+### SHOULD — visual presentation
 
-## Stamina and action economy
+- Pixel-art players and court assets, after hex dimensions and positioning are stable.
+- Animations for blocks, made shots, misses, and dunks. Introduce an explicit block outcome before using a block animation; the current engine includes defensive pressure in miss probability and has no separate block event.
 
-Stamina must determine the number of moves an athlete can make in a phase. Represent the remaining allowance separately so spending moves does not overwrite the athlete's underlying stat.
+### WANT — persistence and seasons
 
-Stamina rules:
+- Export and import the game as a versioned JSON save file.
+- Season progression with player development. Both wins and losses award points to spend improving players. Tune award amounts and upgrade costs; a larger award for wins is a proposed default.
 
-- Normal phase allowance: derived directly from the athlete's stamina stat.
-- Offensive rebound allowance: floor(normal phase allowance × 2/3), with no minimum-one override. For example, five becomes three, six becomes four, and one becomes zero.
-- Example: a normal allowance of six becomes four after an offensive rebound.
-- Recalculate from the normal allowance on every offensive rebound; do not compound the reduction. Rounding down is confirmed. Using the normal allowance as the baseline on repeated rebounds remains the proposed rule.
-- A defensive rebound gives the new offense its normal allowance.
-- Apply the same rebound rules to both teams.
-- Keep long-term fatigue out of the first prototype. Add it only if phase stamina alone proves insufficient.
+## Planned phase flow
 
-Prototype action costs should be simple: movement, passing, driving, and screening consume explicit amounts. Tune costs together with court size and defensive reaction limits. Decide whether taking a shot consumes a move and whether a player with no moves can receive a pass or attempt a catch-and-shoot shot.
+1. Start a checked-ball possession with normal action allowances, or a rebound phase with reduced allowances and preserved on-court positions.
+2. Enter planning mode. Select players, assign actions on a shared team timeline, and preview paths, expected ball ownership, and each player's remaining budget. Edit, reorder, and remove actions freely before committing.
+3. Validate the complete plan for budgets, adjacency, action dependencies, and foreseeable conflicts. Explain issues at the relevant player, hex, or timeline step. Planning and validation consume no stamina and no random draws.
+4. Commit the play. Freeze the assigned plan and enter execution mode. Resolve movement, passing, shooting, and bounded defensive responses in a documented order. The player can pause, change playback speed, or step through events, but cannot issue new actions mid-play.
+5. Display the current action, ball location, defensive response, and result as execution advances. Distinguish a planning estimate from actual execution odds after defenders move.
+6. A shot, turnover, or possession-ending violation stops the submitted sequence and cancels remaining assignments. Resolve a missed shot and rebound before handing control back.
+7. An offensive rebound starts a new planning phase at current positions with reduced stamina. A defensive rebound, made basket, or turnover starts the other team's normal possession. A winning basket ends the game immediately.
+8. Before each opponent possession, choose defensive strategy. AI offense submits and executes a plan under the same hex, stamina, and resolution rules; human defenders react automatically. Retain the strategy across offensive rebounds.
 
-## Offensive actions
+For the first planned-play version, keep checked-ball resets on possession changes and omit transition clearing, fouls, free throws, and out-of-bounds play. Screens and richer finishing options remain follow-up tactical work.
 
-First prototype:
+## Hex court and spatial rules
 
-- Move to a legal adjacent court location.
-- Pass to a teammate, with risk based on distance, passing ability, and defensive coverage.
-- Drive with the ball, considering the defender and available space.
-- Shoot: three-point perimeter shot, two-point midrange shot, or two-point finish near the rim.
-- Under-rim attempt: when the ball handler is directly under the rim and undefended, resolve the attempt as a dunk with 100% success for two points, without a shot-success roll. When defended, resolve the attempt as a regular two-point shot at the rim, using finishing ability and defensive pressure to calculate success probability. Evaluate coverage at shot resolution using the shared court-based contest rule; define its exact range with the court layout. No separate dunk-ability eligibility restriction for the first playable.
+Use axial `(q, r)` coordinates with a derived cube distance. Keep conversion to SVG/pixel positions in the renderer. Provide one authoritative neighbor and distance implementation for movement, contests, passing, drives, AI, and path previews.
 
-After the core loop works:
+Define a finite playable hex set and explicit court markings: rim/under-rim cell or cells, paint, midrange, three-point area, and boundaries. Shot value must follow the shooter's cell classification rather than an approximate screen coordinate. Define how arc-boundary cells are classified.
 
-- Set a screen and handle switches or help defense.
-- Add cuts, give-and-go opportunities, and distinct finishing options.
-- Expand finishing options beyond the initial layup and under-rim dunk.
+Choose cell size so a player with ordinary stamina can create useful positioning within one phase. Start with a coarse board and validate sample possessions before increasing resolution. Define hex-based contest reach and pass pressure; preserve the guaranteed open dunk when no defender can contest.
 
-## Probability-based human defense
+Remove named-zone assumptions from state, legality checks, action targets, check-ball positions, AI, tests, and UI together. Keep heights, skill ratings, stamina rarity, scoring, and rebound rounding intact.
 
-Give the human meaningful defensive strategy choices while letting calculations resolve opponent possessions. Initial strategies could include balanced coverage, protecting the paint, and pressuring the perimeter.
+## Action planning and execution
 
-Calculate opponent opportunities using offensive abilities, defensive ratings, matchup quality, strategy, and stamina constraints. Resolve the attack as explicit events such as a shot, turnover, foul if implemented, and rebound. Avoid collapsing all outcomes into one unexplained success roll.
+Use a shared timeline with room for multiple players to act in a step. Each player has their own queue and stamina budget. The timeline must support off-ball cuts coordinated with passes and shots, rather than merely submitting one player's actions at a time.
 
-Show the major reasons for outcomes. Strong defense should improve the odds without guaranteeing a stop. Decide during prototyping whether AI offense uses the same court simulation internally or a simpler possession model; the latter must still honor stamina and offensive rebound phases.
+Provisional action costs remain one for movement, dribbling/driving, passing, and shooting. A player can spend their last move shooting. The planner should flag an exhausted intended receiver and prevent knowingly scheduling a shot that player cannot afford. Do not turn unrelated teammates' off-ball actions into an immediate violation solely because the current ball handler has spent their budget; determine whether the committed plan can still legally progress. Replace the old immediate-action expiry assumption explicitly.
 
-## Competent AI defense
+Before implementation, write down and test:
 
-Start with a rules-and-scoring approach; machine learning is unnecessary for the initial version.
+- Ordering of same-step movement, passes, shots, and defensive reactions; when a pass arrives and the receiver may act.
+- Whether same-step teammate swaps are legal, how two players targeting one hex are handled, and how opponents sharing a hex represent coverage.
+- How actions depend on expected ball ownership and earlier movement.
+- When a blocked or failed action spends its cost and what later dependent actions do.
+- The defensive reaction budget for a timeline step containing multiple offensive actions. Several simultaneous assignments must not accidentally generate unlimited defense.
+- How an unfinished or exhausted plan expires when it produces no shot.
 
-For each legal reaction, score:
+Proposed initial failure behavior: a newly impossible movement or pass is visibly skipped and the affected player holds position; do not silently invent a replacement action. A shot, rebound, turnover, or possession-ending violation ends the play and discards the remaining plan. Settle exact cost/refund and dependency rules with worked examples in milestone 5. These are implementation defaults to specify, not additional confirmed user requirements.
 
-- Immediate threat to the rim and ability to contest the ball handler.
-- Shooter ability, distance to the basket, and open space.
-- Passing-lane pressure and the cost of leaving an assignment.
-- Help defense, recovery distance, and available reaction budget.
-- Screen coverage once screens exist.
+## Feedback — MUST
 
-Use explicit matchup assignments and prevent defenders from chasing the ball indiscriminately. Help only when the expected benefit outweighs the scoring chance conceded elsewhere. Preserve legal movement and budgets; the AI must not teleport, receive unlimited reactions, or act on future player choices.
+During planning:
 
-Recommended starting timing: one bounded defensive response after each human offensive action. Define a team or per-defender response budget and any zero-cost coverage updates before implementation. Check that harmless passes cannot generate unlimited defensive movement.
+- Show each player's projected path, action order, planned ball movement, and remaining budget.
+- Highlight the selected hex/action and legal targets. Explain disabled actions and conflicts at the point of interaction.
+- Show costs and estimated risks before commitment. Label predictions as estimates because the defense will react during execution.
 
-## Suggested athlete stats
+During execution:
 
-Keep the first set small:
+- Highlight the active timeline step, acting player, pass or shot target, ball, and relevant defenders.
+- Provide play/pause, speed, and single-step controls. Playback speed and pausing must never change simulation results.
+- Explain important outcomes in short language, including the main numerical contributors: for example, "Contested finish — 42% chance" or "Pass intercepted — receiver closely guarded."
+- Visibly identify skipped assignments, exhausted budgets, possession changes, and offensive rebounds. Explain that rebound budgets reset to two-thirds rounded down.
 
-- Stamina: phase move allowance.
-- Shooting: perimeter and/or midrange accuracy.
-- Finishing: ability to score near the rim.
-- Passing: pass success under pressure.
-- Defense: contesting and containing opponents.
-- Rebounding: ability to secure missed shots.
+After a play:
 
-Introduce speed, ball handling, size, or separate defensive skills only when they create distinct decisions that the initial stats cannot support.
+- Summarize the result and the key reason, preserve an inspectable event history, and make the next available action clear.
+- Distinguish makes, ordinary misses, and blocks once blocks exist. Never present every contested miss as a block.
+- Keep text, contrast, keyboard access, and reduced-motion behavior usable on desktop and narrow screens. Required feedback must work before pixel art or advanced animations are ready.
 
-## Interface and feedback
+## AI and balance
 
-- Show the court, all six athletes, ball possession, score, and current phase.
-- Display each athlete's remaining moves and highlight legal actions.
-- Preview approximate shot quality and action costs before committing.
-- Label rebound phases clearly and explain their reduced move allowance.
-- Provide a compact event log explaining shots, turnovers, defensive reactions, and rebounds.
-- Use simple animations after the underlying rules are reliable.
+Adapt both offensive planning and defensive reactions to hex positions and timeline execution. AI must not know future random draws or exploit the human's unexecuted assignments. Defensive decisions use the current simulated court state; do not read the rest of the human plan to anticipate actions unfairly.
 
-## Technical approach to evaluate
+Retain matchup assignments, evaluate rim threats and open shooters, help only when it improves the situation, and account for recovery and remaining budget. Add screen coverage when screens are implemented.
 
-A local browser prototype using TypeScript is a reasonable candidate. Choose the rendering/UI library after confirming the board representation. Keep game rules independent of rendering so possessions can be simulated and verified without a browser.
+Test open rim threats, dangerous shooters, help-and-recovery decisions, passes to cutters, and repeated harmless passes. Compare mirrored lineups and rare stamina extremes through seeded simulations. Track shot quality, useful actions, rebounds, and win rates; neither passing tests nor equal raw stat totals proves the game is balanced.
 
-Use an explicit game-state machine, legal-action validation, and seeded randomness for reproducible debugging. Store probabilities and action costs in tuning data rather than scattering constants through UI code. No server or account system is needed for the first playable version.
+## Technical approach
 
-## Implementation milestones
+Continue strict TypeScript with the rendering-independent rules engine and native DOM/SVG browser interface. Keep court geometry, tuning data, planning validation, deterministic execution, presentation, and persistence separately testable.
 
-### 1. Lock the core rules
+Extend the state machine to explicit planning, executing, resolving, and game-over states. Store committed plans and execution progress in serializable state. Resolve seeded simulation events independently of wall-clock playback, so pause, speed, stepping, and later save/load preserve outcomes.
 
-Define court layout, phase timing, stamina allowances, action costs, possession changes, defensive reaction budgets, and shot/rebound outcomes. Write a few sample possessions to expose ambiguities.
+No account system or remote server is required. JSON persistence should use browser file download/upload rather than promise unrestricted direct filesystem access.
 
-### 2. Build the rules prototype
+## Development milestones and completion criteria
 
-Implement state transitions, legal actions, stamina spending, shot outcomes, and rebound phases with seeded randomness. Verify offensive rebounds reset to the reduced allowance and defensive rebounds change possession correctly.
+### 1–3. Initial rules, engine, and browser prototype — implemented baseline
 
-### 3. Build the playable court
+Retain the existing engine and browser validation as regression evidence. The immediate-action/named-zone prototype remains runnable until each replacement is integrated.
 
-Add player selection, movement, passing, shooting, score display, move counters, and event feedback. Complete a full game with placeholder graphics.
+### 4. Hex court — MUST, next
 
-### 4. Implement defensive intelligence
+Implement axial coordinates, finite court cells, rim and scoring classifications, adjacency, distance, check-ball placement, and readable hex rendering. Migrate state, actions, formulas, and AI to the same spatial model. Update core-rules.md.
 
-Add matchup assignment, contests, help and recovery, and threat scoring. Evaluate scenarios involving an open shooter, an unguarded drive, and a dangerous pass. Add screens and their coverage after the base defense is stable.
+Done when legal movement follows hex adjacency; contours, scoring, contest range, and under-rim eligibility are visible and consistent; existing basketball invariants pass on the new court; and ordinary-stamina sample possessions remain practical.
 
-### 5. Add opponent possessions and defensive strategy
+### 5. Planned plays and deterministic execution — MUST
 
-Implement probability-based human defense and readable AI possessions. Ensure both sides obey the same stamina and rebound constraints even if their presentation differs.
+Specify same-step ordering and failure rules with worked possessions, then implement a shared timeline, per-player queues, editing, whole-plan validation, commit, execution, and defensive reactions. Migrate AI offense to submitted plans. Replace incompatible immediate-action expiry rules. Add planning routes and dependency feedback while building the planner.
 
-### 6. Balance and polish
+Done when coordinated movement/pass/shot plans execute without mid-play assignments; invalid plans leave state and RNG untouched; collisions and broken dependencies have defined outcomes; defense has bounded legal reactions; and shots, turnovers, rebounds, and game-over cancel the correct remaining actions.
 
-Tune shot probabilities, action costs, rebound frequency, and defensive response budgets. Add animations and sound once full games are tactically interesting.
+### 6. Playback and outcome feedback — MUST release gate
 
-## Acceptance criteria for the first playable
+Finish active-event highlights, concise explanations, result summaries, play/pause, speed, stepping, and responsive/keyboard interaction. Feedback work starts in milestones 4–5; this milestone verifies the complete experience.
 
-- A human can complete a 3-on-3 game against AI in a browser.
-- Each athlete's phase allowance derives from stamina and cannot be overspent.
-- Offensive rebounds visibly begin a reduced-stamina offensive phase.
-- Human defense uses probability-based outcomes affected by meaningful defensive choices.
-- AI covers obvious threats, reacts legally, and does not abandon dangerous shooters without reason.
-- Movement, passing, driving, and different shot locations offer useful choices.
-- Baskets score two or three points according to location; dunks score two.
-- An undefended attempt directly under the rim is a guaranteed two-point dunk. A defended attempt there resolves as a probability-based two-point shot at the rim. Dunks are unavailable elsewhere.
-- Rebound allowances use exactly floor(normal allowance × 2/3).
-- Outcomes and remaining moves are understandable from the interface.
-- Seeded simulations can reproduce reported rule or AI bugs.
+Done when a human can plan, run, and understand a full game without reading debug logs; rebound planning and budget resets are clear; errors show at the relevant action; and the same seed and plan yield identical results at every playback speed and under stepping/pausing. Verify both successful and broken plays in the browser.
 
-## Open design decisions
+### 7. Tactical AI and balance
 
-- Grid versus named court zones, and the number of locations.
-- Exact definition of a phase and defensive reaction timing.
-- Stamina scale, action costs, and confirmation that repeated offensive rebounds always use the normal allowance as their baseline.
-- Whether the human selects defensive strategy per possession or less often.
-- How much AI offense is shown and whether it shares the court simulation.
-- Whether games to 11 require a two-point winning margin, plus check-ball rules, fouls, steals, and out-of-bounds handling.
+Improve coverage, help/recovery, offensive plan quality, and stamina/height tradeoffs on the settled hex and timeline rules. Add screens only with matching planning, resolution, defensive coverage, and feedback. Basic legal and competent defense is required in milestones 4–6; deeper tuning continues here.
 
-## Main design risks
+Done when scenario checks reject obvious defensive mistakes and seeded mirrored simulations and human playtests expose no dominant action or rare-player profile. Record remaining tuning limitations honestly.
 
-- Too many actions can make a possession tedious; too few can erase tactical choices.
-- Unlimited defensive reactions can punish passing and break the action economy.
-- Excessive randomness can make good decisions feel irrelevant; deterministic outcomes can remove tension.
-- Abstract human defense needs meaningful choices and clear feedback to remain engaging.
-- Rebound phases must create urgency without making second-chance possessions ineffective.
+### 8. Pixel art and outcome animations — SHOULD
 
+Establish pixel-art scale and silhouettes on the stable hex court. Add made-shot, miss, dunk, and block animations; define explicit block probability/events and their rebound consequences before animating blocks. Preserve open-dunk guarantees. Offer reduced-motion and fast-play alternatives.
 
+Done when each implemented outcome has distinct readable presentation, players remain distinguishable, and visual timing does not change simulation outcomes.
+
+### 9. Versioned JSON saves — WANT, before seasons
+
+Add download/upload of a JSON save with a schema version, roster and ratings, scores, possession and phase, hex positions, stamina, strategy, RNG state, committed plan and execution cursor, and match status. Include completed-game results needed by later season progression. Decide whether to save only at stable boundaries or support paused execution; state the supported boundary in the interface.
+
+Validate imported files and reject unsupported or invalid data without changing the current game. Keep transient timers and DOM out of saves. Define migrations before changing a published save schema.
+
+Done when a saved game resumes with the same legal state and next random outcome, invalid files preserve the current game, and export/import works from the browser.
+
+### 10. Seasons and player development — WANT
+
+Define a finite season schedule and results, award development points after both wins and losses, and let the human spend them on players between games. Tune win/loss awards, upgrade costs, and caps. Preserve archetype tradeoffs and keep rare stamina extremes rare; do not let every player become fast, tall, and excellent at every skill.
+
+Extend JSON saves to preserve season position, results, point balance, upgraded ratings, and reward history. Apply each game's reward once, including after reload/import. Show earned points, upgrade costs, effects, and remaining balance clearly.
+
+Done when a season can be played, saved, resumed, and completed; wins and losses both award points exactly once; upgrades cannot overspend or exceed defined limits; and the resulting roster remains balanced enough for playtesting.
+
+## Next playable release acceptance criteria
+
+- A human can complete a 3-on-3 game to 21 in the browser using the hex court and submitted plays.
+- All offensive actions are assigned before playback; movement, passing, shooting, and off-ball coordination remain useful.
+- Each player's stamina cannot be overspent; scoring, height tradeoffs, rare stamina profiles, guaranteed open dunks, and rebound rounding remain correct.
+- Offensive rebounds stop the current play and start a new reduced-budget planning phase.
+- Both teams use the same court and execution rules. Automatic human defense and competent, budget-limited AI defense remain functional.
+- Required planning, execution, and result feedback works without relying on pixel art or advanced animations.
+- Pausing, stepping, or changing speed does not alter the seeded result.
+- All superseded named-zone and immediate-action assumptions are removed from active rules and tests, with historical validation clearly identified.
+
+## Main risks and decisions to resolve
+
+- A dense hex board may consume all stamina before players create useful opportunities; tune cell count before making assets.
+- Simultaneous movement, passing, collisions, and defensive reactions need an explicit order before the timeline engine is written.
+- Skipped actions and broken dependencies must be fair and visible, rather than silently replacing a player's intended play.
+- Playback must explain causality without forcing the player to watch a long sequence at normal speed.
+- Progression can erase archetype tradeoffs unless upgrade costs and caps are designed deliberately.
+- Save/load must preserve RNG and reward history to avoid changed outcomes or duplicate development points.
+
+## Historical prototype validation
+
+The following records describe the initial named-zone, immediate-action prototype. Re-run and adapt these checks for the new milestones; they are not evidence of completed hex, timeline, feedback, persistence, or season work.
+
+## Milestone 2 validation
+
+The initial 16 scenario tests passed, including repeat rebound allowances, 21-point wins, guaranteed open dunks, contested rim shots, height modifiers, rare stamina profiles, invalid actions, defensive reactions, and seeded reproducibility. A separate simulation completed 120 games: 60 with default lineups and 60 with rare-profile stress lineups, mirrored across teams. This establishes termination and rule consistency, not roster balance or final AI quality. The baseline AI produces low-quality shots and needs the planned tactical improvements and playtesting. The browser interface is now implemented; see milestone 3 below.
+
+## TypeScript conversion
+
+Source, roster, scenario tests, and simulation runner use TypeScript with explicit state, action, zone, player, strategy, and event types. The build emits JavaScript, declarations, and source maps under dist/. Run npm ci, npm run typecheck, npm test, and npm run simulate -- 30. All 16 tests passed after conversion; 120 simulation results matched the original JavaScript version. Four seeded full games also matched action by action, including state and event logs.
+
+## Milestone 3 validation
+
+The browser court supports player selection, court-zone movement, passing, shooting, chance previews, stamina counters, 21-point scoring, reduced-stamina rebound phases, strategy selection, opponent step/play/pause controls, game-over results, seeded restart, and readable event feedback. The local server runs with npm run dev at http://127.0.0.1:5173. State is in memory and resets on reload.
+
+Strict type checking and all 19 tests passed, including three UI-session flow tests. Browser checks covered off-ball movement, a completed pass, scoring, defensive strategy, an opponent offensive rebound with reduced allowances, a complete game ending at 21, restart, and automatic opponent playback returning control. Responsive layout inspection found that small screens placed instructions before controls; controls now precede the supplementary panels. Browser console checks showed no errors during these flows. Detailed AI tuning, balance, sound, and richer animation remain later milestones.
