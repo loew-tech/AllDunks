@@ -1,5 +1,6 @@
 export type Team = 'human' | 'ai';
-export type Zone = 'T' | 'LW' | 'RW' | 'LC' | 'RC' | 'H' | 'LE' | 'RE' | 'LB' | 'RB' | 'R';
+import type { HexId } from './court.js';
+export type { HexId } from './court.js';
 export type Phase = 'normal' | 'rebound';
 export type Strategy = 'balanced' | 'protect-paint' | 'pressure-perimeter';
 
@@ -16,7 +17,7 @@ export interface PlayerProfile {
 export interface Player extends PlayerProfile { id: string; team: Team }
 
 export type Action =
-  | { type: 'move' | 'drive'; athlete: string; to: Zone }
+  | { type: 'move' | 'drive'; athlete: string; to: HexId }
   | { type: 'pass'; athlete: string; to: string; warning?: string | null }
   | { type: 'shoot'; athlete: string; to?: never }
   | { type: 'end-possession'; athlete?: never; to?: never };
@@ -30,7 +31,7 @@ export interface ShotPreview {
   contributors: { id: string; pressure: number }[];
 }
 export interface ReboundWeight { id: string; weight: number; heightFactor: number }
-export interface DefensiveReaction { athlete: string; to: Zone }
+export interface DefensiveReaction { athlete: string; to: HexId }
 
 export interface EventDetails {
   'phase-start': { phaseType: Phase; possession: Team; remaining: Record<string, number> };
@@ -41,7 +42,7 @@ export interface EventDetails {
   action: { actionType: Action['type']; athlete: string; to?: string; warning?: string | null; cost: number };
   shot: ShotPreview & { athlete: string; roll: number | null; made: boolean };
   pass: { athlete: string; receiver: string; probability: number; roll: number; success: boolean };
-  drive: { athlete: string; to: Zone; turnoverProbability: number; roll: number | null; success: boolean };
+  drive: { athlete: string; to: HexId; turnoverProbability: number; roll: number | null; success: boolean };
   'match-over': { winner: Team; scores: Record<Team, number> };
   'phase-violation': { athlete: string };
 }
@@ -54,7 +55,7 @@ export interface GameState {
   scores: Record<Team, number>;
   possession: Team;
   ballHolder: string;
-  positions: Record<string, Zone>;
+  positions: Record<string, HexId>;
   remaining: Record<string, number>;
   phase: Phase;
   phaseNumber: number;

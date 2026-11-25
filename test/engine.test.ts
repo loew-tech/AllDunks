@@ -10,8 +10,8 @@ import { PLAYER_POOL, defaultRoster } from '../src/roster.js';
 const shoot: Action = { type: 'shoot', athlete: 'human-0' };
 function rimState() {
   const s = createGame();
-  Object.assign(s.positions, { 'human-0': 'R', 'human-1': 'LW', 'human-2': 'RW',
-    'ai-0': 'T', 'ai-1': 'LC', 'ai-2': 'RC' });
+  Object.assign(s.positions, { 'human-0': '0,0', 'human-1': '-4,3', 'human-2': '1,3',
+    'ai-0': '-2,4', 'ai-1': '-4,0', 'ai-2': '4,0' });
   return s;
 }
 function outcome(predicate: (state: GameState) => boolean, prepare: () => GameState = () => createGame()) {
@@ -24,12 +24,12 @@ function outcome(predicate: (state: GameState) => boolean, prepare: () => GameSt
 }
 
 test('court connections are symmetric and distances are shortest paths', () => {
-  for (const [zone, neighbors] of (Object.entries(COURT) as [keyof typeof COURT, (keyof typeof COURT)[]][])) {
-    for (const neighbor of neighbors) assert.ok(COURT[neighbor].includes(zone));
-    assert.equal(distance(zone, zone), 0);
-    for (const target of (Object.keys(COURT) as (keyof typeof COURT)[])) assert.equal(distance(zone, target), distance(target, zone));
+  for (const [hex, neighbors] of (Object.entries(COURT) as [keyof typeof COURT, (keyof typeof COURT)[]][])) {
+    for (const neighbor of neighbors) assert.ok(COURT[neighbor].includes(hex));
+    assert.equal(distance(hex, hex), 0);
+    for (const target of (Object.keys(COURT) as (keyof typeof COURT)[])) assert.equal(distance(hex, target), distance(target, hex));
   }
-  assert.equal(distance('T', 'R'), 4);
+  assert.equal(distance('-2,4', '0,0'), 4);
 });
 
 test('stamina extremes are rare and carry physical tradeoffs', () => {
@@ -65,7 +65,7 @@ test('open under-rim dunk is guaranteed, spends final move, and consumes no RNG'
 });
 
 test('defended rim uses finishing, contest and height, even if defender is exhausted', () => {
-  const s = rimState(); s.positions['ai-0'] = 'LB';
+  const s = rimState(); s.positions['ai-0'] = '-1,1';
   const shooter = s.players[0], defender = s.players[3];
   shooter.finishing = 70; defender.defense = 80;
   shooter.height = defender.height = 195; s.remaining[defender.id] = 0;
@@ -110,7 +110,7 @@ test('repeated offensive rebounds preserve positions and reset from normal stami
 test('defensive rebound changes possession, resets positions and restores allowances', () => {
   const { next } = outcome(n => n.events.some(e => e.type === 'possession-change' && e.reason === 'defensive-rebound'));
   assert.equal(next.possession, 'ai'); assert.equal(next.phase, 'normal');
-  assert.equal(next.ballHolder, 'ai-0'); assert.equal(next.positions['ai-0'], 'T');
+  assert.equal(next.ballHolder, 'ai-0'); assert.equal(next.positions['ai-0'], '-2,4');
   for (const p of next.players) assert.equal(next.remaining[p.id], p.stamina);
 });
 
@@ -131,11 +131,11 @@ test('21 is the win target and overshooting ends immediately', () => {
 test('invalid actions do not change state or RNG', () => {
   const s = createGame(), snapshot = structuredClone(s);
   for (const action of [
-    { type: 'drive', athlete: 'human-0', to: 'R' },
-    { type: 'move', athlete: 'ai-0', to: 'T' },
+    { type: 'drive', athlete: 'human-0', to: '0,0' },
+    { type: 'move', athlete: 'ai-0', to: '-2,4' },
     { type: 'shoot', athlete: 'human-1' },
     { type: 'pass', athlete: 'human-0', to: 'ai-0' },
-    { type: 'drive', athlete: 'human-0', to: 'LW' },
+    { type: 'drive', athlete: 'human-0', to: '-4,3' },
   ] satisfies Action[]) assert.throws(() => applyAction(s, action), /Illegal/);
   assert.deepEqual(s, snapshot);
   s.remaining['human-0'] = 0;
@@ -154,10 +154,10 @@ test('passing to exhausted receiver warns, then violates on completion', () => {
 });
 
 test('defense closes an open rim within one legal move', () => {
-  const s = rimState(); s.positions['ai-0'] = 'LE';
+  const s = rimState(); s.positions['ai-0'] = '-2,2';
   const reaction = chooseDefensiveReaction(s);
   assert.ok(reaction);
-  assert.ok(['R', 'LB', 'RB'].includes(reaction.to));
+  assert.ok(['0,0', '-1,1', '0,1'].includes(reaction.to));
   const source = s.positions[reaction.athlete];
   assert.equal(distance(source, reaction.to), 1);
 });
@@ -178,11 +178,11 @@ test('defense keeps a dangerous shooter covered when helping gains less', () => 
   const s = rimState();
   // A low-finishing ball handler is already covered; moving the wing defender
   // toward the rim would expose a superior perimeter scorer.
-  s.positions['ai-0'] = 'LB'; s.positions['ai-1'] = 'LW'; s.positions['ai-2'] = 'RW';
+  s.positions['ai-0'] = '-1,1'; s.positions['ai-1'] = '-4,3'; s.positions['ai-2'] = '1,3';
   s.players[0].finishing = 0; s.players[1].shooting = 100;
   s.remaining['ai-0'] = 0; s.remaining['ai-2'] = 0;
   const reaction = chooseDefensiveReaction(s);
-  assert.ok(reaction === null || distance(reaction.to, 'LW') <= 1);
+  assert.ok(reaction === null || distance(reaction.to, '-4,3') <= 1);
 });
 
 test('strategy choice is restricted to start of opponent possession', () => {
@@ -206,8 +206,8 @@ test('seeded full games terminate with legal state and reproducible outcomes', (
         assert.ok(COURT[s.positions[p.id]]);
       }
       for (const team of ['human', 'ai'] as const) {
-        const zones = s.players.filter(p => p.team === team).map(p => s.positions[p.id]);
-        assert.equal(new Set(zones).size, 3);
+        const occupiedHexes = s.players.filter(p => p.team === team).map(p => s.positions[p.id]);
+        assert.equal(new Set(occupiedHexes).size, 3);
       }
       assert.ok(s.events.length > previous.events.length);
     }

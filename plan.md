@@ -4,7 +4,7 @@
 
 A single-player, phase-based, 3-on-3 basketball browser game about coaching: assign a team's actions during a planning phase, then watch the play unfold against a reacting defense. AllDunks is the title; passing, jump shots, layups, drives, screens, rebounds, and dunks all have a place.
 
-The initial TypeScript engine and playable browser prototype are implemented on `codex/core-rules`. They currently use 11 named court zones and immediate actions. The next release replaces that interaction with a hex court and planned plays, with clear feedback as a release requirement. Existing validation describes the old prototype; it does not establish that these new requirements are complete.
+The initial TypeScript engine and playable browser prototype are implemented on `codex/core-rules`. Milestone 4 now replaces the 11 named court zones with a shared 60-cell axial hex court. Actions still resolve immediately; milestone 5, planned plays, is next. Clear planning and execution feedback remains a release requirement. Existing validation describes the old prototype; it does not establish that these new requirements are complete.
 
 See [TODO.md](TODO.md) for priorities, [README.md](README.md) for running the current prototype, and [core-rules.md](core-rules.md) for its existing rules. This plan takes precedence for future development. Update the detailed rules alongside the hex and timeline implementation so the documents agree.
 
@@ -121,13 +121,13 @@ No account system or remote server is required. JSON persistence should use brow
 
 Retain the existing engine and browser validation as regression evidence. The immediate-action/named-zone prototype remains runnable until each replacement is integrated.
 
-### 4. Hex court — MUST, next
+### 4. Hex court — MUST, implemented
 
 Implement axial coordinates, finite court cells, rim and scoring classifications, adjacency, distance, check-ball placement, and readable hex rendering. Migrate state, actions, formulas, and AI to the same spatial model. Update core-rules.md.
 
 Done when legal movement follows hex adjacency; contours, scoring, contest range, and under-rim eligibility are visible and consistent; existing basketball invariants pass on the new court; and ordinary-stamina sample possessions remain practical.
 
-### 5. Planned plays and deterministic execution — MUST
+### 5. Planned plays and deterministic execution — MUST, next
 
 Specify same-step ordering and failure rules with worked possessions, then implement a shared timeline, per-player queues, editing, whole-plan validation, commit, execution, and defensive reactions. Migrate AI offense to submitted plans. Replace incompatible immediate-action expiry rules. Add planning routes and dependency feedback while building the planner.
 
@@ -204,3 +204,9 @@ Source, roster, scenario tests, and simulation runner use TypeScript with explic
 The browser court supports player selection, court-zone movement, passing, shooting, chance previews, stamina counters, 21-point scoring, reduced-stamina rebound phases, strategy selection, opponent step/play/pause controls, game-over results, seeded restart, and readable event feedback. The local server runs with npm run dev at http://127.0.0.1:5173. State is in memory and resets on reload.
 
 Strict type checking and all 19 tests passed, including three UI-session flow tests. Browser checks covered off-ball movement, a completed pass, scoring, defensive strategy, an opponent offensive rebound with reduced allowances, a complete game ending at 21, restart, and automatic opponent playback returning control. Responsive layout inspection found that small screens placed instructions before controls; controls now precede the supplementary panels. Browser console checks showed no errors during these flows. Detailed AI tuning, balance, sound, and richer animation remain later milestones.
+
+## Milestone 4 validation
+
+The 60-cell axial court is shared by movement, shot classification, contests, pass/drive pressure, rebound distance, AI, and browser targets. Check-ball positions, state/action types, event descriptions, and tests now use hex coordinates. Pixel projection stays in the renderer. New geometry tests cover board bounds, shortest paths for every cell pair, scoring areas, coordinate labels, invalid movement, and reaching the rim with normal stamina. Original scoring, rebound, stamina, height, and dunk scenarios were migrated. This milestone does not implement the phase 5 planner or complete the later feedback release gate.
+
+Verification: strict type checking and all 24 tests passed. The simulation runner completed 120 games across default and rare-player mirrored lineups. Browser testing completed a 14–21 game, verified defended-hex movement, live three-to-two-point preview changes, restart, and keyboard hex activation with no console errors. Phase 5 remains next; AI quality and balance still require later tuning.

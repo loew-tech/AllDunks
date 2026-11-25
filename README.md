@@ -2,7 +2,7 @@
 
 A single-player, phase-based 3-on-3 basketball browser game in development.
 
-Milestones 1–3: the core rules, TypeScript engine, and playable browser court are implemented. The engine compiles to standard JavaScript ES modules shared by the browser and Node. Use Node 22 or newer; TypeScript and Node type definitions are development dependencies, with no runtime dependencies.
+Milestones 1–4: the core rules, TypeScript engine, and playable browser court are implemented. The engine compiles to standard JavaScript ES modules shared by the browser and Node. Use Node 22 or newer; TypeScript and Node type definitions are development dependencies, with no runtime dependencies.
 
 ## Play locally
 
@@ -14,9 +14,9 @@ npm run dev
 
 Open **http://127.0.0.1:5173** in your browser. Leave the terminal running; stop it with Ctrl+C. `npm start` does the same thing. To use a different port in PowerShell, set `$env:PORT = '5174'` before starting. This is a local server bound to your computer, with no publishing or account setup.
 
-Select a mint player, then click a highlighted court zone or use the action panel. Shooting, passing, and movement each cost one move. Shot and pass chances are shown before committing. On defense, choose your strategy and click **Play opponent possession**, or **Next AI action** to advance one step. **New game** restarts the selected seed, so repeated games can reproduce the same rolls. Change the game seed near the instructions for a different sequence. Games are not saved across reloads.
+Select a mint player, then click a highlighted hex or use the action panel. Shooting, passing, and movement each cost one move. Shot and pass chances are shown before committing. On defense, choose your strategy and click **Play opponent possession**, or **Next AI action** to advance one step. **New game** restarts the selected seed, so repeated games can reproduce the same rolls. Change the game seed near the instructions for a different sequence. Games are not saved across reloads.
 
-The build has no hot reload: after source edits, stop and rerun `npm run dev`, then reload the page. Court connections are shown as dotted lines; move costs follow these connections rather than pixel distance. Player height, selected-player ratings, remaining moves, reduced-stamina phases, and recent outcomes are visible in the interface.
+The build has no hot reload: after source edits, stop and rerun `npm run dev`, then reload the page. The 60-cell court uses axial (q, r) coordinates. Each adjacent hex costs one move. Pale green hexes are legal destinations; orange dots mark destinations currently covered by defenders. Light perimeter cells score three, interior cells score two, and only (0,0) is directly under the rim. A cell crossing the arc is classified by its center. Pixel positions do not determine movement distance. Player height, selected-player ratings, remaining moves, reduced-stamina phases, and recent outcomes are visible in the interface.
 
 ## Verify
 
@@ -50,3 +50,9 @@ Transitions return new state; invalid actions throw without mutating input or ad
 The current AI is a deterministic baseline with bounded defensive movement and one-action offensive lookahead. Simulation checks establish reproducibility and termination; their outcomes do not establish roster balance or strong basketball play. Broader AI and tuning remain milestones 4–6. The first interface uses instant court updates and a paced opponent-action sequence; richer animations and sound remain later work.
 
 TypeScript source uses `.js` import extensions so compiled ES modules resolve directly. Code within `src/`, `test/`, and `scripts/` imports source modules through those paths; TypeScript resolves them to the corresponding `.ts` files. External JavaScript consumers import the compiled `dist/src/engine.js` module. Compiler configuration follows the official [NodeNext module guidance](https://www.typescriptlang.org/tsconfig/module.html) and [strict checking options](https://www.typescriptlang.org/tsconfig/strict.html).
+
+## Hex court milestone
+
+`src/court.ts` owns finite cells, axial/cube distance, adjacency, shot areas, and check-ball positions. `web/court-view.ts` owns pixel projection and polygon geometry. The engine, AI, action panel, and court use the same cell data. Current actions still resolve immediately; assigning a complete play before execution is the next milestone.
+
+The hex migration retains scoring to 21, stamina/height tradeoffs, guaranteed undefended dunks, contested rim shots, and floor(normal stamina × 2/3) rebound resets. Geometry tests compare cube distance against an independent breadth-first search over every pair of board cells.

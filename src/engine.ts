@@ -1,13 +1,10 @@
-import type { Action, DefensiveReaction, EventDetails, GameEvent, GameState, Phase, Player, ShotPreview, Strategy, Team, Zone } from './types.js';
+import type { Action, DefensiveReaction, EventDetails, GameEvent, GameState, Phase, Player, ShotPreview, Strategy, Team, HexId } from './types.js';
 export type * from './types.js';
 import { defaultRoster } from './roster.js';
 
-export const COURT: Record<Zone, Zone[]> = {
-  T: ['LW', 'RW', 'H'], LW: ['T', 'LC', 'LE'], RW: ['T', 'RC', 'RE'],
-  LC: ['LW', 'LB'], RC: ['RW', 'RB'], H: ['T', 'LE', 'RE'],
-  LE: ['LW', 'H', 'LB'], RE: ['RW', 'H', 'RB'],
-  LB: ['LC', 'LE', 'R'], RB: ['RC', 'RE', 'R'], R: ['LB', 'RB'],
-};
+import { COURT, CHECK_POSITIONS, RIM, cell, distance } from './court.js';
+export { COURT, distance } from './court.js';
+
 export const STRATEGIES: Strategy[] = ['balanced', 'protect-paint', 'pressure-perimeter'];
 export const TUNING = {
   targetScore: 21,
@@ -28,20 +25,6 @@ function emit<K extends keyof EventDetails>(s: GameState, type: K, details: Even
   s.events.push({ ...details, type, phase: s.phaseNumber } as GameEvent);
 }
 
-export function distance(from: Zone, to: Zone): number {
-  if (!COURT[from] || !COURT[to]) throw new Error('Unknown court zone');
-  const queue: [Zone, number][] = [[from, 0]];
-  const seen = new Set<Zone>([from]);
-  for (let i = 0; i < queue.length; i++) {
-    const [zone, steps] = queue[i];
-    if (zone === to) return steps;
-    for (const next of COURT[zone]) if (!seen.has(next)) {
-      seen.add(next); queue.push([next, steps + 1]);
-    }
-  }
-  throw new Error('Disconnected court');
-}
-
 export function phaseAllowance(stamina: number, phase: Phase = 'normal'): number {
   return phase === 'rebound' ? Math.floor(stamina * 2 / 3) : stamina;
 }
@@ -53,8 +36,8 @@ function validateRoster(players: Player[]): void {
     if (typeof p.id !== 'string' || !p.id || ids.has(p.id)) throw new Error('Unique athlete IDs required');
     ids.add(p.id);
     if (!['human', 'ai'].includes(p.team)) throw new Error('Unknown team');
-    if (!Number.isInteger(p.stamina) || p.stamina < 3 || p.stamina > 7) throw new Error('Stamina must be 3–7');
-    if (!Number.isFinite(p.height) || p.height < 140 || p.height > 250) throw new Error('Height must be 140–250 cm');
+    if (!Number.isInteger(p.stamina) || p.stamina < 3 || p.stamina > 7) throw new Error('Stamina must be 3â€“7');
+    if (!Number.isFinite(p.height) || p.height < 140 || p.height > 250) throw new Error('Height must be 140â€“250 cm');
     for (const key of ['shooting', 'finishing', 'passing', 'defense', 'rebounding'] as const) {
       if (!Number.isInteger(p[key]) || p[key] < 0 || p[key] > 100) throw new Error(`Invalid ${key} rating`);
     }
@@ -81,8 +64,8 @@ function startPhase(s: GameState, phase: Phase, reset: boolean): void {
   for (const p of s.players) s.remaining[p.id] = phaseAllowance(p.stamina, phase);
   if (reset) {
     for (const team of ['human', 'ai'] as const) {
-      const zones: Zone[] = team === s.possession ? ['T', 'LW', 'RW'] : ['H', 'LE', 'RE'];
-      members(s, team).forEach((p, i) => { s.positions[p.id] = zones[i]; });
+      const cells = team === s.possession ? CHECK_POSITIONS.offense : CHECK_POSITIONS.defense;
+      members(s, team).forEach((p, i) => { s.positions[p.id] = cells[i]; });
     }
     s.ballHolder = members(s, s.possession)[0].id;
     s.strategyOpen = s.possession === 'ai';
@@ -119,16 +102,15 @@ export function contestingDefenders(s: GameState, shooterId: string): Player[] {
 export function shotPreview(s: GameState, shooterId: string = s.ballHolder): ShotPreview {
   const p = athlete(s, shooterId);
   if (!p) throw new Error('Unknown shooter');
-  const zone = s.positions[p.id];
-  const kind = ['T', 'LW', 'RW', 'LC', 'RC'].includes(zone) ? 'three'
-    : ['R', 'LB', 'RB'].includes(zone) ? 'rim' : 'midrange';
+  const hex = s.positions[p.id];
+  const kind = cell(hex).area;
   const defenders = contestingDefenders(s, p.id);
-  const dunk = zone === 'R' && defenders.length === 0;
+  const dunk = hex === RIM && defenders.length === 0;
   const [base, scale] = TUNING.shot[kind];
   const baseChance = base + scale * (kind === 'rim' ? p.finishing : p.shooting) / 100;
   const contributors = defenders.map(d => ({
     id: d.id,
-    pressure: (s.positions[d.id] === zone ? TUNING.contest.same : TUNING.contest.adjacent)
+    pressure: (s.positions[d.id] === hex ? TUNING.contest.same : TUNING.contest.adjacent)
       + TUNING.contest.defense * d.defense / 100
       + (kind === 'rim' ? clamp((d.height - p.height) * TUNING.heightPressurePerCm,
         -TUNING.heightPressureCap, TUNING.heightPressureCap) : 0),
@@ -147,7 +129,7 @@ export function passProbability(s: GameState, receiverId: string): number {
     - 0.10 * (1 - p.passing / 100) - 0.06 * pressure, 0.55, 0.98);
 }
 
-export function driveRisk(s: GameState, id: string, to: Zone): number {
+export function driveRisk(s: GameState, id: string, to: HexId): number {
   const p = athlete(s, id);
   const defenders = members(s, other(p.team)).filter(d => distance(s.positions[d.id], to) <= 1);
   return defenders.length ? clamp(0.04 + 0.12 * Math.max(...defenders.map(d => d.defense / 100))
@@ -156,7 +138,7 @@ export function driveRisk(s: GameState, id: string, to: Zone): number {
 
 export function reboundWeights(s: GameState) {
   return [...s.players].sort((a, b) => a.id.localeCompare(b.id)).map(p => {
-    const proximity = [4, 3, 2, 1][Math.min(3, distance(s.positions[p.id], 'R'))];
+    const proximity = [4, 3, 2, 1][Math.min(3, distance(s.positions[p.id], RIM))];
     const heightFactor = clamp(1 + (p.height - 195) * 0.01, 0.75, 1.25);
     return { id: p.id, weight: (1 + p.rebounding) * proximity * heightFactor, heightFactor };
   });
@@ -174,7 +156,7 @@ function resolveRebound(s: GameState): void {
   } else changePossession(s, 'defensive-rebound');
 }
 
-function canMove(s: GameState, p: Player, to: Zone): boolean {
+function canMove(s: GameState, p: Player, to: HexId): boolean {
   return s.remaining[p.id] > 0 && COURT[s.positions[p.id]].includes(to)
     && !members(s, p.team).some(m => m.id !== p.id && s.positions[m.id] === to);
 }

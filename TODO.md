@@ -2,7 +2,7 @@
 
 ## MUST
 
-1. Hex coordinates.
+1. Hex coordinates — implemented in phase 4.
 2. Assign all actions first, then play out the sequence—like a coach calling a play during a timeout.
 3. Clear feedback to the user about what is happening — required for the next playable release.
    - During planning: show routes, action order, stamina costs, risks, and invalid assignments.
