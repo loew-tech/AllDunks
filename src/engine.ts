@@ -1,9 +1,10 @@
+import { startingPositions } from './formations.js';
 import type { Action, DefensiveReaction, EventDetails, GameEvent, GameState, Phase, Player, ShotPreview, Strategy, Team, HexId, PlannedAction } from './types.js';
 export type * from './types.js';
 import { defaultRoster } from './roster.js';
 import { movementProblems } from './movement.js';
 
-import { COURT, CHECK_POSITIONS, RIM, cell, distance } from './court.js';
+import { COURT, RIM, cell, distance } from './court.js';
 export { COURT, distance } from './court.js';
 
 export const STRATEGIES: Strategy[] = ['balanced', 'protect-paint', 'pressure-perimeter'];
@@ -65,10 +66,7 @@ function startPhase(s: GameState, phase: Phase, reset: boolean): void {
   s.mode = 'planning'; s.playback = null;
   for (const p of s.players) s.remaining[p.id] = phaseAllowance(p.stamina, phase);
   if (reset) {
-    for (const team of ['human', 'ai'] as const) {
-      const cells = team === s.possession ? CHECK_POSITIONS.offense : CHECK_POSITIONS.defense;
-      members(s, team).forEach((p, i) => { s.positions[p.id] = cells[i]; });
-    }
+    s.positions = startingPositions(s);
     s.ballHolder = members(s, s.possession)[0].id;
     s.strategyOpen = s.possession === 'ai';
   }

@@ -23,6 +23,18 @@
 @media(max-width:760px){.timeline-panel{order:2}.below-court{order:3}.timeline-panel h2 small{font-size:.72rem}.timeline{min-width:620px}}
 
 .game-layout>div{min-width:0}.timeline-panel{min-width:0}
+button.play-button{display:inline-flex;align-items:center;justify-content:center;gap:9px;background:#47ce83;color:#102d1d;border:1px solid #6be3a0;font-weight:800;min-height:44px;padding:11px 18px}
+button.play-button:hover:not(:disabled){background:#72e49f;border-color:#a2f5bd}
+.play-icon{width:18px;height:18px;flex:none;display:inline-block}
+.action-buttons button.play-button{justify-content:center}
+.court-panel{overflow:clip}
+.court-playbar{display:flex;gap:16px;align-items:center;justify-content:space-between;padding:12px 18px;background:#17292b;border-bottom:1px solid #405050;position:sticky;top:0;z-index:8}
+.court-playbar>span{font-size:.85rem;color:#bfd1c5}
+.step-results{padding:12px 18px;background:#203c32;border-bottom:1px solid #527460;max-height:190px;overflow:auto}
+.step-results-heading{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:6px}
+.step-results-heading strong{color:#b7f2ca;font-size:1.05rem}.step-results-heading span{color:#bed2c4;font-size:.78rem}
+.step-results ul{padding:0;margin:0;list-style:none;font-size:.86rem;line-height:1.5}.step-results li{padding:3px 0;color:#b8cec2}.step-results li.key-event{color:#f0fae9;font-weight:600}
+@media(max-width:760px){.court-playbar{padding:10px 12px;gap:10px}.court-playbar>span{font-size:.74rem}.step-results{padding:10px 12px;max-height:170px}.step-results-heading{align-items:start}.step-results-heading span{font-size:.7rem}.step-results ul{font-size:.8rem}}
 .court .hex-cell.active-planner polygon{fill:#ffcd42;fill-opacity:.72;stroke:#ffe582;stroke-opacity:1;stroke-width:5;filter:drop-shadow(0 0 9px #ffce43) drop-shadow(0 0 3px #fff3ac)}
 .court .player-token.selected .selection{stroke:#ffe582}
 .court .court-hold{cursor:pointer;outline:none}
@@ -30,3 +42,37 @@
 .court .court-hold text{fill:#392b14;font:850 20px ui-sans-serif,system-ui;letter-spacing:.08em;pointer-events:none}
 .court .court-hold:hover rect,.court .court-hold:focus-visible rect{fill:#fff0ad;stroke:#fff9d7;stroke-width:4}
 @media(max-width:760px){.timeline-panel{order:1}.sidebar{order:2}}
+
+.court-panel{position:relative}
+.court-popup{position:absolute;left:50%;top:60%;transform:translate(-50%,-50%);z-index:7;pointer-events:none;background:#10241fee;color:#fff1b5;border:2px solid #ffda73;border-radius:14px;padding:16px 26px;font-size:clamp(1.2rem,3vw,2.4rem);font-weight:900;text-align:center;box-shadow:0 8px 30px #0007;animation:popup-arrive .2s ease-out}
+@keyframes popup-arrive{from{opacity:0;transform:translate(-50%,-35%) scale(.9)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+@media(prefers-reduced-motion:reduce){.court-popup{animation:none}}
+
+.court-stage{position:relative}.court-stage .court-popup{top:45%}
+
+/* Keep feedback out of the court flow, with a fixed scrolling viewport. */
+.commentary-panel{min-width:0;height:580px;display:flex;flex-direction:column;overflow:hidden}
+.commentary-tabs{display:flex;gap:6px;flex:none;margin-bottom:12px}
+.commentary-tabs button{flex:1;padding:9px 5px;font-size:.8rem}
+.commentary-tabs [aria-selected=true]{background:#2c493b;border-color:var(--mint);color:#d8ffe6}
+.commentary-content{min-height:0;overflow:auto;flex:1;scrollbar-gutter:stable;overflow-wrap:anywhere}
+.commentary-content .log{max-height:none;overflow:visible}
+.commentary-result{background:#203c32;border:1px solid #527460;border-radius:7px;padding:12px;margin-bottom:12px;font-size:.85rem;line-height:1.5}
+.commentary-result strong{color:#b7f2ca}.commentary-result ul{padding-left:17px;margin:8px 0 0}
+.below-court{grid-template-columns:1fr}
+.court-heading{min-height:86px}.court-caption{min-height:92px}
+.court-heading>div:first-child{min-width:0}.court-heading h1{line-height:1.4}
+@media(min-width:1200px){
+ .shell{max-width:1800px;padding-left:24px;padding-right:24px}
+ .game-layout{grid-template-columns:260px minmax(0,1fr) 300px;gap:18px}
+ .commentary-panel{position:sticky;top:16px;height:clamp(460px,calc(100vh - 230px),700px)}
+ .court-column{min-width:0}
+}
+@media(min-width:761px) and (max-width:1199px){
+ .commentary-panel{grid-column:1 / -1;grid-row:2;height:320px}
+ .court-column{grid-column:1;grid-row:1}.sidebar{grid-column:2;grid-row:1}
+}
+@media(max-width:760px){
+ .commentary-panel{order:3;height:320px}
+ .court-heading{min-height:90px}.court-caption{min-height:112px}
+}

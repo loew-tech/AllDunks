@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GameSession } from '../web/session.js';
+import { GameSession as RandomSession } from '../web/session.js';
+
+class GameSession extends RandomSession {
+  constructor() {
+    super();
+    Object.assign(this.state.positions, { 'human-0':'-2,4', 'human-1':'-4,3', 'human-2':'1,3', 'ai-0':'-1,3', 'ai-1':'-3,2', 'ai-2':'1,2' });
+  }
+}
 
 test('editing and reordering drafts does not move players, consume stamina, or draw RNG', () => {
   const session = new GameSession(), before = structuredClone(session.state);
@@ -74,3 +81,4 @@ test('manual timeline edits resume cycling locally and clear resets the first pl
   assert.equal(session.selectedId,'human-0'); assert.equal(session.selectedStep,0);
   assert.equal(session.cycleComplete,false);
 });
+

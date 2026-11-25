@@ -45,3 +45,7 @@ If the last step finishes without a shot or turnover, expire the phase as a turn
 AI offense constructs and commits a complete plan before execution and obeys the same validator and timeline. It currently uses the baseline one-action evaluator to choose assignments against an optimistic projection. It does not replan during playback. Tactical offensive quality, stronger defensive decisions, richer execution explanations, and animation remain follow-up work.
 
 The phase 5 interface includes essential draft errors, paths, locked playback, active-column indication, and result logs. Phase 6 remains the feedback release gate for a more polished, understandable experience. JSON files and season progression remain later milestones.
+
+## Playback presentation
+
+Play uses green buttons with a play icon both above the court and in the action panel. Automatic playback has a default 1.8-second interval per shared step; there is no mandatory pause or acknowledgement between results. Pause, speed selection, and manual stepping remain available. The court-level results panel shows actual events and chances from the resolved step, with shot/turnover/rebound outcomes prioritized over routine movement. The last step report remains visible after the play ends. These presentation reports do not consume RNG or change simulation timing.

@@ -74,6 +74,7 @@ test('a normal-stamina ball handler can reach the rim and afford a shot in one p
   let completed = false;
   for (let seed = 0; seed < 100 && !completed; seed++) {
     let s = createGame({ seed });
+    Object.assign(s.positions, { 'human-0':'-2,4', 'human-1':'-4,3', 'human-2':'1,3', 'ai-0':'-1,3', 'ai-1':'-3,2', 'ai-2':'1,2' });
     for (const p of s.players.filter(p => p.team === 'ai')) s.remaining[p.id] = 0;
     for (const to of path) {
       s = applyAction(s, { type: 'drive', athlete: 'human-0', to });

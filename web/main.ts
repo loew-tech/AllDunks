@@ -1,3 +1,7 @@
+import { possessionEvents } from './possession-log.js';
+import { actionFrames } from './action-frames.js';
+import type { GameState } from '../src/types.js';
+import { courtPlayButton, stepFeedback, DEFAULT_STEP_DELAY } from './playback-feedback.js';
 import { assignmentOptions, controlsMarkup, timelineMarkup, strategyNames, escape } from './planner-controls.js';
 import type { PlannedAction, GameEvent, Strategy, HexId } from '../src/types.js';
 import { CELLS, cellLabel, distance } from '../src/court.js';
@@ -13,6 +17,12 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let error = '';
 let seed = 42;
 let speed = 1;
+let visualState: GameState | null = null;
+let popup = '';
+let animating = false;
+let animationVersion = 0;
+let commentaryTab: 'human' | 'ai' = 'human';
+const commentaryScroll = { human: 0, ai: 0 };
 
 const cells = Object.fromEntries(Object.values(CELLS).map(c => [c.id, {
   ...hexToPixel(c), name: cellLabel(c.id), short: `${c.q},${c.r}`,
@@ -22,7 +32,7 @@ const playerName = (id: string) => escape(session.state.players.find(p => p.id =
 const isHumanTurn = () => session.canEdit;
 
 function courtMarkup(actions: PlannedAction[]): string {
-  const s = session.preview;
+  const s = visualState ?? session.preview;
   const moves = actions.filter((a): a is Extract<PlannedAction, {type:'move'}> => a.type === 'move' && a.athlete === session.selectedId);
   const available = new Set(moves.map(a => a.to));
   const targets = Object.values(CELLS).map(c => {
@@ -124,9 +134,27 @@ function eventText(e: GameEvent): string | null {
   }
 }
 
+function commentaryMarkup(state: GameState): string {
+  const log = possessionEvents(state.events, commentaryTab).map(e => ({ phase: e.phase, text: eventText(e) }))
+    .filter(e => e.text !== null).slice(-80).reverse();
+  const report = commentaryTab === 'ai' ? session.lastOpponentReport : session.lastStepReport;
+  const feedback = !animating && report?.team === commentaryTab ? stepFeedback(state, report) : null;
+  return `<aside class="panel commentary-panel" aria-label="Possession play-by-play"><h2>Play-by-play <small>Latest first</small></h2>
+    <div class="commentary-tabs" role="tablist" aria-label="Possession">
+      ${(['human','ai'] as const).map(team => `<button id="commentary-tab-${team}" role="tab" aria-selected="${commentaryTab===team}" aria-controls="commentary-content" tabindex="${commentaryTab===team?0:-1}" data-commentary-tab="${team}">${team==='human'?'Your possession':'Opponent'}</button>`).join('')}
+    </div>
+    <div id="commentary-content" class="commentary-content" role="tabpanel" tabindex="0" aria-labelledby="commentary-tab-${commentaryTab}">
+      ${feedback ? `<section class="commentary-result"><strong>${escape(feedback.title)}</strong><ul>${feedback.lines.filter(l=>l.important).map(l=>`<li>${escape(l.text)}</li>`).join('')}</ul></section>` : ''}
+      <ol class="log">${log.map(e=>`<li><span class="log-phase">P${e.phase}</span>${e.text}</li>`).join('') || `<li>${commentaryTab==='human'?'Your play events will appear here.':'No opponent possession yet.'}</li>`}</ol>
+    </div></aside>`;
+}
+
 function render(): void {
+  const focusedTab = root.querySelector('[data-commentary-tab]:focus')?.getAttribute('data-commentary-tab');
+  const oldCommentary = root.querySelector<HTMLElement>('.commentary-content');
+  if (oldCommentary) commentaryScroll[oldCommentary.getAttribute('aria-labelledby') === 'commentary-tab-ai' ? 'ai' : 'human'] = oldCommentary.scrollTop;
   const previousTimelineScroll = root.querySelector('.timeline-scroll')?.scrollLeft ?? 0;
-  const s = session.state, actions = assignmentOptions(session);
+  const s = visualState ?? session.state, actions = assignmentOptions(session);
   const selected = s.players.find(p => p.id === session.selectedId)!;
   const label = s.status === 'over' ? 'Game over' : s.phase === 'rebound' ? 'Rebound phase · ⅔ moves' : `Phase ${s.phaseNumber} · ${s.mode === 'executing' ? 'Executing' : 'Planning'}`;
   const caption = s.status === 'over' ? 'Game finished. Play again to start a fresh matchup.' : isHumanTurn()
@@ -142,12 +170,11 @@ function render(): void {
       <div class="score-team away"><div><div class="team-name">VISITORS</div><div class="team-label">AI team · orange</div></div><div class="score-number">${s.scores.ai.toString().padStart(2, '0')}</div></div>
     </section>
     ${error ? `<p role="alert" class="notice error">${escape(error)}</p>` : ''}
-    <div class="game-layout"><div><section class="court-panel"><div class="court-heading"><div><h1>${isHumanTurn() ? escape(selected.name) + ': choose an action' : s.status === 'over' ? 'Final whistle.' : s.mode === 'executing' ? 'Play in motion.' : 'Get a stop.'}</h1><p>${session.canEdit ? `Step ${session.selectedStep + 1} of ${session.draft.slots} · Player ${s.players.filter(p => p.team === 'human').findIndex(p => p.id === session.selectedId) + 1} of 3 · Hold is free` : 'Hex court · orange dots mark covered destinations'}</p></div><div class="legend"><span><b></b>Your team</span><span><b></b>Opponent</span></div></div>
-      ${courtMarkup(actions)}<div class="court-caption">${escape(caption)}</div></section>
-      ${timelineMarkup(session)}<div class="below-court"><section class="panel"><h2>Play-by-play <small>Latest first</small></h2><ol class="log">${log.map(e => `<li><span class="log-phase">P${e.phase}</span>${e.text}</li>`).join('')}</ol></section>
-      <section class="panel howto"><h2>The game plan <small>How to play</small></h2><p><strong>Follow the gold hex</strong> to the active player. Assign an action or use Hold above them; the next teammate becomes active automatically. After all three, planning advances one step. You can still click timeline slots to edit.</p>
+    <div class="game-layout">${commentaryMarkup(s)}<div class="court-column"><section class="court-panel"><div class="court-playbar">${courtPlayButton(session, running)}<span>${s.mode === 'executing' ? 'Watch each step and its results' : 'Run the assigned play'}</span></div><div class="court-heading"><div><h1>${isHumanTurn() ? escape(selected.name) + ': choose an action' : s.status === 'over' ? 'Final whistle.' : s.mode === 'executing' ? 'Play in motion.' : 'Get a stop.'}</h1><p>${session.canEdit ? `Step ${session.selectedStep + 1} of ${session.draft.slots} · Player ${s.players.filter(p => p.team === 'human').findIndex(p => p.id === session.selectedId) + 1} of 3 · Hold is free` : 'Hex court · orange dots mark covered destinations'}</p></div><div class="legend"><span><b></b>Your team</span><span><b></b>Opponent</span></div></div>
+      <div class="court-stage">${courtMarkup(actions)}${popup ? `<div class="court-popup" role="status" aria-live="assertive">${escape(popup)}</div>` : ''}</div><div class="court-caption">${escape(caption)}</div></section>
+      ${timelineMarkup(session)}<div class="below-court"><section class="panel howto"><h2>The game plan <small>How to play</small></h2><p><strong>Follow the gold hex</strong> to the active player. Assign an action or use Hold above them; the next teammate becomes active automatically. After all three, planning advances one step. You can still click timeline slots to edit.</p>
       <p><strong>Create a shot.</strong> Assign actions for all three players, then run the play. Each step resolves movement, passing, one defensive response, then shooting.</p>
-      <details><summary>Stamina, rebounds &amp; dunks</summary><ul><li>Each player has their own move budget for the phase; shooting costs one too.</li><li>After an offensive rebound, everyone resets to ⅔ of normal stamina, rounded down.</li><li>Undefended directly under the rim? The shot is a guaranteed dunk. With a defender nearby, it is a normal shot at the rim.</li><li>Holds cost nothing. A player may hold for every slot. If the timeline ends without a shot, possession turns over.</li><li>All possession changes reset to a check at the top. First to reach 21 wins.</li></ul></details>
+      <details><summary>Stamina, rebounds &amp; dunks</summary><ul><li>Each player has their own move budget for the phase; shooting costs one too.</li><li>After an offensive rebound, everyone resets to ⅔ of normal stamina, rounded down.</li><li>Undefended directly under the rim? The shot is a guaranteed dunk. With a defender nearby, it is a normal shot at the rim.</li><li>Holds cost nothing. A player may hold for every slot. If the timeline ends without a shot, possession turns over.</li><li>Possession changes generate a spaced starting formation with a check near the top. First to reach 21 wins.</li></ul></details>
       <div class="toolbar-bottom"><label for="seed">Game seed</label><input id="seed" type="number" step="1" value="${seed}" aria-label="Game seed"><button data-command="new-game">Restart with seed</button></div></section></div>
     </div><aside class="sidebar">${rosterMarkup()}${controlsMarkup(session, actions, running, speed)}
       <section class="panel"><h2>Scouting report <small>Opponent</small></h2>${s.players.filter(p => p.team === 'ai').map(p => `<div class="opponent-row"><span>${escape(p.name)} · ${p.height} cm</span><span>${s.remaining[p.id]} moves</span></div>`).join('')}</section>
@@ -155,6 +182,9 @@ function render(): void {
   </div>`;
   const timelineScroll = root.querySelector('.timeline-scroll');
   if (timelineScroll) timelineScroll.scrollLeft = previousTimelineScroll;
+  const commentary = root.querySelector('.commentary-content');
+  if (commentary) commentary.scrollTop = commentaryScroll[commentaryTab];
+  if (focusedTab) root.querySelector<HTMLElement>(`[data-commentary-tab="${focusedTab}"]`)?.focus({preventScroll:true});
 }
 
 function stopPlayback(): void {
@@ -163,17 +193,48 @@ function stopPlayback(): void {
   timer = undefined;
 }
 
-function stepPlayback(): void {
+function startPlayback(): void {
+  running = true;
+  // Show the committed starting positions before executing the first step.
+  if (session.state.playback?.cursor === 0) {
+    render();
+    timer = setTimeout(stepPlayback, 650 / speed);
+  } else {
+    void stepPlayback();
+  }
+}
+
+async function stepPlayback(): Promise<void> {
+  if (animating) return;
   if (session.state.mode !== 'executing') { stopPlayback(); render(); return; }
   try {
+    const before = session.state;
     session.step();
-    if (session.state.mode !== 'executing') stopPlayback();
-  } catch (e) { error = e instanceof Error ? e.message : 'Unable to execute step'; stopPlayback(); }
+    const version = animationVersion;
+    animating = true;
+    for (const frame of actionFrames(before, session.lastStepReport?.events ?? [])) {
+      visualState = frame.state; popup = frame.text; render();
+      await new Promise(resolve => setTimeout(resolve, frame.duration / speed));
+      if (version !== animationVersion) return;
+    }
+    visualState = null; popup = ''; animating = false;
+    if (session.state.mode !== 'executing') {
+      stopPlayback();
+      if (session.state.possession === 'ai' && session.state.status === 'playing') {
+        const humanReport = session.lastStepReport;
+        session.simulateOpponentPossession();
+        session.lastStepReport = humanReport;
+      }
+    }
+  } catch (e) { error = e instanceof Error ? e.message : 'Unable to execute step'; animating = false; visualState = null; popup = ''; stopPlayback(); }
   render();
-  if (running) timer = setTimeout(stepPlayback, 700 / speed);
+  if (running) timer = setTimeout(stepPlayback, DEFAULT_STEP_DELAY / speed);
 }
 
 function activate(target: Element): void {
+  const tab = target.getAttribute('data-commentary-tab');
+  if (tab === 'human' || tab === 'ai') { commentaryTab = tab; render(); root.querySelector<HTMLElement>(`[data-commentary-tab="${tab}"]`)?.focus({preventScroll:true}); return; }
+  if (animating && target.getAttribute('data-command') !== 'new-game' && target.getAttribute('data-command') !== 'toggle-play') return;
   error = '';
   try {
     const player = target.getAttribute('data-player');
@@ -192,6 +253,7 @@ function activate(target: Element): void {
     } else if (command === 'new-game') {
       const nextSeed = Number(root.querySelector<HTMLInputElement>('#seed')?.value ?? seed);
       if (!Number.isSafeInteger(nextSeed)) throw new Error('Enter a whole number for the game seed.');
+      animationVersion++; animating = false; visualState = null; popup = '';
       stopPlayback(); seed = nextSeed; session = new GameSession(seed);
     } else if (command === 'hold-active') session.assign({ type: 'hold', athlete: session.selectedId });
     else if (command === 'clear-slot') session.clearSlot();
@@ -200,26 +262,33 @@ function activate(target: Element): void {
     else if (command === 'later') session.shiftSlot(1);
     else if (command === 'commit-plan' || command === 'run-plan') {
       session.commit();
-      if (command === 'run-plan') { running = true; stepPlayback(); return; }
+      if (command === 'run-plan') { startPlayback(); return; }
     } else if (command === 'commit-ai' || command === 'run-ai') {
       session.startOpponentPlay();
-      if (command === 'run-ai') { running = true; stepPlayback(); return; }
+      if (command === 'run-ai') { startPlayback(); return; }
     } else if (command === 'next-step' && !running) { stepPlayback(); return; }
     else if (command === 'toggle-play') {
       if (running) stopPlayback();
-      else { running = true; stepPlayback(); return; }
+      else { startPlayback(); return; }
     }
   } catch (e) { error = e instanceof Error ? e.message : 'Unable to assign action'; }
   render();
 }
 
-const actionable = '[data-player],[data-hex],[data-assignment],[data-command],[data-strategy],[data-slot]';
+const actionable = '[data-commentary-tab],[data-player],[data-hex],[data-assignment],[data-command],[data-strategy],[data-slot]';
 root.addEventListener('click', event => {
   if (!(event.target instanceof Element)) return;
   const target = event.target.closest(actionable);
   if (target && !target.hasAttribute('disabled')) activate(target);
 });
 root.addEventListener('keydown', event => {
+  if (event.target instanceof Element && event.target.matches('[data-commentary-tab]') && ['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) {
+    event.preventDefault();
+    const next = event.key === 'Home' ? 'human' : event.key === 'End' ? 'ai' : commentaryTab === 'human' ? 'ai' : 'human';
+    const button = root.querySelector(`[data-commentary-tab="${next}"]`);
+    if (button) activate(button);
+    return;
+  }
   if (!['Enter', ' '].includes(event.key) || !(event.target instanceof Element)) return;
   // Native buttons already implement keyboard activation.
   const target = event.target.closest<SVGElement>('svg [role="button"]');
@@ -228,5 +297,5 @@ root.addEventListener('keydown', event => {
 root.addEventListener('change', event => {
   if (event.target instanceof HTMLSelectElement && event.target.id === 'playback-speed') speed = Number(event.target.value);
 });
-window.addEventListener('pagehide', stopPlayback);
+window.addEventListener('pagehide', () => { animationVersion++; stopPlayback(); });
 render();

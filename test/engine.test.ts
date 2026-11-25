@@ -2,7 +2,7 @@ import test from 'node:test';
 import type { Action, GameState } from '../src/types.js';
 import assert from 'node:assert/strict';
 import {
-  COURT, createGame, phaseAllowance, shotPreview, reboundWeights, applyAction,
+  COURT, createGame as randomGame, phaseAllowance, shotPreview, reboundWeights, applyAction,
   legalActions, chooseDefensiveReaction, chooseOffensiveAction, selectStrategy, distance,
 } from '../src/engine.js';
 import { PLAYER_POOL, defaultRoster } from '../src/roster.js';
@@ -110,7 +110,7 @@ test('repeated offensive rebounds preserve positions and reset from normal stami
 test('defensive rebound changes possession, resets positions and restores allowances', () => {
   const { next } = outcome(n => n.events.some(e => e.type === 'possession-change' && e.reason === 'defensive-rebound'));
   assert.equal(next.possession, 'ai'); assert.equal(next.phase, 'normal');
-  assert.equal(next.ballHolder, 'ai-0'); assert.equal(next.positions['ai-0'], '-2,4');
+  assert.equal(next.ballHolder, 'ai-0'); assert.equal(next.positions['ai-0'] in COURT, true);
   for (const p of next.players) assert.equal(next.remaining[p.id], p.stamina);
 });
 
@@ -216,3 +216,9 @@ test('seeded full games terminate with legal state and reproducible outcomes', (
   }
   for (const seed of [0, 1, 42, 12345]) assert.deepEqual(run(seed), run(seed));
 });
+
+function createGame(options: Parameters<typeof randomGame>[0] = {}) {
+  const state = randomGame(options);
+  Object.assign(state.positions, { 'human-0':'-2,4', 'human-1':'-4,3', 'human-2':'1,3', 'ai-0':'-1,3', 'ai-1':'-3,2', 'ai-2':'1,2' });
+  return state;
+}

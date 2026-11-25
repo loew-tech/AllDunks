@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createGame, applyAction } from '../src/engine.js';
+import { createGame as randomGame, applyAction } from '../src/engine.js';
 import { emptyPlan, validatePlan, commitPlan, stepPlay, chooseOffensivePlan } from '../src/plans.js';
 import { PLAYER_POOL } from '../src/roster.js';
 import type { GameState } from '../src/types.js';
@@ -155,3 +155,9 @@ test('a winning planned open dunk is guaranteed and ends without another phase',
   assert.equal(next.rng,s.rng); assert.equal(next.phaseNumber,s.phaseNumber);
   assert.throws(()=>stepPlay(next),/No committed play/);
 });
+
+function createGame(options: Parameters<typeof randomGame>[0] = {}) {
+  const state = randomGame(options);
+  Object.assign(state.positions, { 'human-0':'-2,4', 'human-1':'-4,3', 'human-2':'1,3', 'ai-0':'-1,3', 'ai-1':'-3,2', 'ai-2':'1,2' });
+  return state;
+}
